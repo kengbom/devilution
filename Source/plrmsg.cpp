@@ -1,8 +1,14 @@
-#include "diablo.h"
+/**
+ * @file plrmsg.cpp
+ *
+ * Implementation of functionality for printing the ingame chat messages.
+ */
+#include "all.h"
 
 static BYTE plr_msg_slot;
 _plrmsg plr_msgs[PMSG_COUNT];
 
+/** Maps from player_num to text colour, as used in chat messages. */
 const char text_color_from_player_num[MAX_PLRS + 1] = { COL_WHITE, COL_WHITE, COL_WHITE, COL_WHITE, COL_GOLD };
 
 void plrmsg_delay(BOOL delay)
@@ -81,21 +87,21 @@ void InitPlrMsg()
 void DrawPlrMsg()
 {
 	int i;
-	DWORD x = 74;
-	DWORD y = 230;
-	DWORD width = 620;
+	DWORD x = 10 + SCREEN_X;
+	DWORD y = 70 + SCREEN_Y;
+	DWORD width = SCREEN_WIDTH - 20;
 	_plrmsg *pMsg;
 
 	if (chrflag || questlog) {
 		if (invflag || sbookflag)
 			return;
-		x = 394;
-		width = 300;
+		x += SPANEL_WIDTH;
+		width -= SPANEL_WIDTH;
 	} else if (invflag || sbookflag)
-		width = 300;
+		width -= SPANEL_WIDTH;
 
 	pMsg = plr_msgs;
-	for (i = 0; i < 8; i++) {
+	for (i = 0; i < PMSG_COUNT; i++) {
 		if (pMsg->str[0])
 			PrintPlrMsg(x, y, width, pMsg->str, text_color_from_player_num[pMsg->player]);
 		pMsg++;
@@ -133,7 +139,7 @@ void PrintPlrMsg(DWORD x, DWORD y, DWORD width, const char *str, BYTE col)
 			c = gbFontTransTbl[(BYTE)*str++];
 			c = fontframe[c];
 			if (c)
-				CPrintString(screen, c, col);
+				PrintChar(screen, c, col);
 			screen += fontkern[c] + 1;
 		}
 

@@ -1,8 +1,13 @@
-#include "diablo.h"
+/**
+ * @file help.cpp
+ *
+ * Implementation of the in-game help text.
+ */
+#include "all.h"
 
 int help_select_line;
 int dword_634494;
-int helpflag;
+BOOL helpflag;
 int displayinghelp[22]; /* check, does nothing? */
 int HelpTop;
 
@@ -437,9 +442,29 @@ const char gszHelpText[] = {
 
 void InitHelp()
 {
-	helpflag = 0;
+	helpflag = FALSE;
 	dword_634494 = 0;
 	displayinghelp[0] = 0;
+}
+
+static void DrawHelpLine(int x, int y, char *text, char color)
+{
+	int off, width;
+	BYTE c;
+
+	width = 0;
+	off = PitchTbl[SStringY[y] + 44 + SCREEN_Y] + x + 32 + PANEL_X;
+	while (*text) {
+		c = gbFontTransTbl[(BYTE)*text];
+		text++;
+		c = fontframe[c];
+		width += fontkern[c] + 1;
+		if (c) {
+			if (width <= 577)
+				PrintChar(off, c, color);
+		}
+		off += fontkern[c] + 1;
+	}
 }
 
 void DrawHelp()
@@ -450,10 +475,14 @@ void DrawHelp()
 
 	DrawSTextHelp();
 	DrawQTextBack();
-	PrintSString(0, 2, 1, "Diablo Help", COL_GOLD, 0);
+#ifdef HELLFIRE
+	PrintSString(0, 2, TRUE, "Hellfire Help", COL_GOLD, 0);
+#else
+	PrintSString(0, 2, TRUE, "Diablo Help", COL_GOLD, 0);
+#endif
 	DrawSLine(5);
 
-	s = gszHelpText;
+	s = &gszHelpText[0];
 
 	for (i = 0; i < help_select_line; i++) {
 		c = 0;
@@ -508,7 +537,8 @@ void DrawHelp()
 				s++;
 			}
 			tempstr[c] = *s;
-			w += fontkern[fontframe[gbFontTransTbl[(BYTE)tempstr[c]]]] + 1;
+			BYTE tc = gbFontTransTbl[(BYTE)tempstr[c]];
+			w += fontkern[fontframe[tc]] + 1;
 			c++;
 			s++;
 		}
@@ -528,33 +558,13 @@ void DrawHelp()
 		}
 	}
 
-	PrintSString(0, 23, 1, "Press ESC to end or the arrow keys to scroll.", COL_GOLD, 0);
-}
-
-void DrawHelpLine(int always_0, int help_line_nr, char *text, char color)
-{
-	int off, width;
-	BYTE c;
-
-	width = 0;
-	off = PitchTbl[SStringY[help_line_nr] + 204] + always_0 + 96 + PANEL_LEFT;
-	while (*text) {
-		c = gbFontTransTbl[(BYTE)*text];
-		text++;
-		c = fontframe[c];
-		width += fontkern[c] + 1;
-		if (c) {
-			if (width <= 577)
-				CPrintString(off, c, color);
-		}
-		off += fontkern[c] + 1;
-	}
+	PrintSString(0, 23, TRUE, "Press ESC to end or the arrow keys to scroll.", COL_GOLD, 0);
 }
 
 void DisplayHelp()
 {
 	help_select_line = 0;
-	helpflag = 1;
+	helpflag = TRUE;
 	HelpTop = 5000;
 }
 

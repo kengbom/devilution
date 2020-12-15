@@ -1,8 +1,16 @@
+/**
+ * @file msgcmd.cpp
+ *
+ * Functions for sending commands to Battle.net.
+ *
+ * See http://classic.battle.net/info/commands.shtml for a list of commands.
+ */
+#ifndef HELLFIRE
 #include <new>      // for placement new
 #include <stddef.h> // for offsetof
 #include <typeinfo> // for typeid
 
-#include "diablo.h"
+#include "all.h"
 #include "list.h"
 
 #define COMMAND_LEN 128
@@ -76,3 +84,4 @@ void msgcmd_add_server_cmd(const char *command)
 		memcpy(msg->command, command, len);
 	}
 }
+#endif

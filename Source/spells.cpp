@@ -1,4 +1,9 @@
-#include "diablo.h"
+/**
+ * @file spells.cpp
+ *
+ * Implementation of functionality for casting player spells.
+ */
+#include "all.h"
 
 int GetManaAmount(int id, int sn)
 {
@@ -39,9 +44,17 @@ int GetManaAmount(int id, int sn)
 		ma = (spelldata[SPL_HEAL].sManaCost + 2 * plr[id]._pLevel - adj) << 6;
 	}
 
+#ifdef HELLFIRE
+	if (plr[id]._pClass == PC_SORCERER) {
+		ma >>= 1;
+	} else if (plr[id]._pClass == PC_ROGUE || plr[id]._pClass == PC_MONK || plr[id]._pClass == PC_BARD) {
+		ma -= ma >> 2;
+	}
+#else
 	if (plr[id]._pClass == PC_ROGUE) {
 		ma -= ma >> 2;
 	}
+#endif
 
 	if (spelldata[sn].sMinMana > ma >> 6) {
 		ma = spelldata[sn].sMinMana << 6;
@@ -91,7 +104,7 @@ BOOL CheckSpell(int id, int sn, char st, BOOL manaonly)
 #endif
 
 	result = TRUE;
-	if (!manaonly && pcurs != 1) {
+	if (!manaonly && pcurs != CURSOR_HAND) {
 		result = FALSE;
 	} else {
 		if (st != RSPLTYPE_SKILL) {
@@ -112,16 +125,20 @@ void CastSpell(int id, int spl, int sx, int sy, int dx, int dy, int caster, int 
 	int dir; // missile direction
 
 	switch (caster) {
-	case 1:
+	case TARGET_PLAYERS:
 		dir = monster[id]._mdir;
 		break;
-	case 0:
+	case TARGET_MONSTERS:
 		// caster must be 0 already in this case, but oh well,
 		// it's needed to generate the right code
-		caster = 0;
+		caster = TARGET_MONSTERS;
 		dir = plr[id]._pdir;
 
+#ifdef HELLFIRE
+		if (spl == SPL_FIREWALL || spl == SPL_LIGHTWALL) {
+#else
 		if (spl == SPL_FIREWALL) {
+#endif
 			dir = plr[id]._pVar3;
 		}
 		break;
@@ -151,8 +168,8 @@ static void PlacePlayer(int pnum)
 
 	if (plr[pnum].plrlevel == currlevel) {
 		for (i = 0; i < 8; i++) {
-			nx = plr[pnum].WorldX + plrxoff2[i];
-			ny = plr[pnum].WorldY + plryoff2[i];
+			nx = plr[pnum]._px + plrxoff2[i];
+			ny = plr[pnum]._py + plryoff2[i];
 
 			if (PosOkPlayer(pnum, nx, ny)) {
 				break;
@@ -164,10 +181,10 @@ static void PlacePlayer(int pnum)
 
 			for (max = 1, min = -1; min > -50 && !done; max++, min--) {
 				for (y = min; y <= max && !done; y++) {
-					ny = plr[pnum].WorldY + y;
+					ny = plr[pnum]._py + y;
 
 					for (x = min; x <= max && !done; x++) {
-						nx = plr[pnum].WorldX + x;
+						nx = plr[pnum]._px + x;
 
 						if (PosOkPlayer(pnum, nx, ny)) {
 							done = TRUE;
@@ -177,8 +194,8 @@ static void PlacePlayer(int pnum)
 			}
 		}
 
-		plr[pnum].WorldX = nx;
-		plr[pnum].WorldY = ny;
+		plr[pnum]._px = nx;
+		plr[pnum]._py = ny;
 
 		dPlayer[nx][ny] = pnum + 1;
 
@@ -198,7 +215,7 @@ void DoResurrect(int pnum, int rid)
 	int hp;
 
 	if ((char)rid != -1) {
-		AddMissile(plr[rid].WorldX, plr[rid].WorldY, plr[rid].WorldX, plr[rid].WorldY, 0, MIS_RESURRECTBEAM, 0, pnum, 0, 0);
+		AddMissile(plr[rid]._px, plr[rid]._py, plr[rid]._px, plr[rid]._py, 0, MIS_RESURRECTBEAM, TARGET_MONSTERS, pnum, 0, 0);
 	}
 
 	if (pnum == myplr) {
@@ -216,17 +233,21 @@ void DoResurrect(int pnum, int rid)
 		ClrPlrPath(rid);
 		plr[rid].destAction = ACTION_NONE;
 		plr[rid]._pInvincible = FALSE;
+#ifndef HELLFIRE
 		PlacePlayer(rid);
+#endif
 
-		hp = 640;
-		if (plr[rid]._pMaxHPBase < 640) {
+		hp = 10 << 6;
+#ifndef HELLFIRE
+		if (plr[rid]._pMaxHPBase < (10 << 6)) {
 			hp = plr[rid]._pMaxHPBase;
 		}
+#endif
 		SetPlayerHitPoints(rid, hp);
 
-		plr[rid]._pMana = 0;
 		plr[rid]._pHPBase = plr[rid]._pHitPoints + (plr[rid]._pMaxHPBase - plr[rid]._pMaxHP);
-		plr[rid]._pManaBase = plr[rid]._pMaxManaBase - plr[rid]._pMaxMana;
+		plr[rid]._pMana = 0;
+		plr[rid]._pManaBase = plr[rid]._pMana + (plr[rid]._pMaxManaBase - plr[rid]._pMaxMana);
 
 		CalcPlrInv(rid, TRUE);
 
@@ -257,6 +278,15 @@ void DoHealOther(int pnum, int rid)
 			hp += (random_(57, 6) + 1) << 6;
 		}
 
+#ifdef HELLFIRE
+		if (plr[pnum]._pClass == PC_WARRIOR || plr[pnum]._pClass == PC_BARBARIAN) {
+			hp <<= 1;
+		} else if (plr[pnum]._pClass == PC_ROGUE || plr[pnum]._pClass == PC_BARD) {
+			hp += hp >> 1;
+		} else if (plr[pnum]._pClass == PC_MONK) {
+			hp *= 3;
+		}
+#else
 		if (plr[pnum]._pClass == PC_WARRIOR) {
 			hp <<= 1;
 		}
@@ -264,6 +294,7 @@ void DoHealOther(int pnum, int rid)
 		if (plr[pnum]._pClass == PC_ROGUE) {
 			hp += hp >> 1;
 		}
+#endif
 
 		plr[rid]._pHitPoints += hp;
 

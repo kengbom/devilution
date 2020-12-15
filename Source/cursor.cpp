@@ -1,26 +1,51 @@
-#include "diablo.h"
+/**
+ * @file cursor.cpp
+ *
+ * Implementation of cursor tracking functionality.
+ */
+#include "all.h"
 
-int cursH;
-int icursH28;
+/** Pixel width of the current cursor image */
 int cursW;
+/** Pixel height of the current cursor image */
+int cursH;
+/** Current highlighted monster */
 int pcursmonst;
+/** Width of current cursor in inventory cells */
 int icursW28;
+/** Height of current cursor in inventory cells */
+int icursH28;
+/** Cursor images CEL */
 BYTE *pCursCels;
-int icursH;
+#ifdef HELLFIRE
+BYTE *pCursCels2;
+#endif
 
-// inv_item value
+/** inv_item value */
 char pcursinvitem;
+/** Pixel width of the current cursor image */
 int icursW;
+/** Pixel height of the current cursor image */
+int icursH;
+/** Current highlighted item */
 char pcursitem;
+/** Current highlighted object */
 char pcursobj;
+/** Current highlighted player */
 char pcursplr;
+/** Current highlighted tile row */
 int cursmx;
+/** Current highlighted tile column */
 int cursmy;
+/** Previously highlighted monster */
 int pcurstemp;
+/** Index of current cursor image */
 int pcurs;
 
 /* rdata */
-const int InvItemWidth[180] = {
+/** Maps from objcurs.cel frame number to frame width. */
+const int InvItemWidth[] = {
+	// clang-format off
 	// Cursors
 	0, 33, 32, 32, 32, 32, 32, 32, 32, 32, 32, 23,
 	// Items
@@ -40,10 +65,21 @@ const int InvItemWidth[180] = {
 	2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28,
 	2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28,
 	2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28,
-	2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28
+	2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28,
+#ifdef HELLFIRE
+	1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28,
+	1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28,
+	1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28,
+	2 * 28, 2 * 28, 1 * 28, 1 * 28, 1 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28,
+	2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28,
+	2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28, 2 * 28
+#endif
+	// clang-format on
 };
 
-const int InvItemHeight[180] = {
+/** Maps from objcurs.cel frame number to frame height. */
+const int InvItemHeight[] = {
+	// clang-format off
 	// Cursors
 	0, 29, 32, 32, 32, 32, 32, 32, 32, 32, 32, 35,
 	// Items
@@ -63,19 +99,34 @@ const int InvItemHeight[180] = {
 	3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28,
 	3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28,
 	3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28,
-	3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28
+	3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28,
+#ifdef HELLFIRE
+	1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28,
+	1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28,
+	1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28, 1 * 28,
+	2 * 28, 2 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28,
+	3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28,
+	3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28, 3 * 28
+#endif
+	// clang-format on
 };
 
 void InitCursor()
 {
-	/// ASSERT: assert(! pCursCels);
+	assert(!pCursCels);
 	pCursCels = LoadFileInMem("Data\\Inv\\Objcurs.CEL", NULL);
+#ifdef HELLFIRE
+	pCursCels2 = LoadFileInMem("Data\\Inv\\Objcurs2.CEL", NULL);
+#endif
 	ClearCursor();
 }
 
 void FreeCursor()
 {
 	MemFreeDbg(pCursCels);
+#ifdef HELLFIRE
+	MemFreeDbg(pCursCels2);
+#endif
 	ClearCursor();
 }
 
@@ -170,7 +221,7 @@ void CheckRportal()
 
 void CheckCursMove()
 {
-	int i, sx, sy, mx, my, tx, ty, px, py, xx, yy, mi;
+	int i, sx, sy, fx, fy, mx, my, tx, ty, px, py, xx, yy, mi;
 	char bv;
 	BOOL flipflag, flipx, flipy;
 
@@ -178,14 +229,15 @@ void CheckCursMove()
 	sy = MouseY;
 
 	if (chrflag || questlog) {
-		if (sx >= 160) {
-			sx -= 160;
+		if (sx >= SCREEN_WIDTH / 4) { /// BUGFIX: (sx >= SCREEN_WIDTH / 2)
+
+			sx -= SCREEN_WIDTH / 4;
 		} else {
 			sx = 0;
 		}
 	} else if (invflag || sbookflag) {
-		if (sx <= 320) {
-			sx += 160;
+		if (sx <= SCREEN_WIDTH / 2) {
+			sx += SCREEN_WIDTH / 4;
 		} else {
 			sx = 0;
 		}
@@ -198,12 +250,18 @@ void CheckCursMove()
 		sy >>= 1;
 	}
 
+	// Adjust by player offset
 	sx -= ScrollInfo._sxoff;
 	sy -= ScrollInfo._syoff;
 
-	if (ScrollInfo._sdir != 0) {
-		sx += ((plr[myplr]._pVar6 + plr[myplr]._pxvel) >> 8) - (plr[myplr]._pVar6 >> 8);
-		sy += ((plr[myplr]._pVar7 + plr[myplr]._pyvel) >> 8) - (plr[myplr]._pVar7 >> 8);
+	// Predict the next frame when walking to avoid input jitter
+	fx = plr[myplr]._pVar6 >> 8;
+	fy = plr[myplr]._pVar7 >> 8;
+	fx -= (plr[myplr]._pVar6 + plr[myplr]._pxvel) >> 8;
+	fy -= (plr[myplr]._pVar7 + plr[myplr]._pyvel) >> 8;
+	if (ScrollInfo._sdir != SDIR_NONE) {
+		sx -= fx;
+		sy -= fy;
 	}
 
 	if (sx < 0) {
@@ -219,18 +277,23 @@ void CheckCursMove()
 		sy = SCREEN_HEIGHT;
 	}
 
-	tx = sx >> 6;
-	ty = sy >> 5;
-	px = sx & 0x3F;
-	py = sy & 0x1F;
-	mx = ViewX + tx + ty - (zoomflag ? (SCREEN_WIDTH / 64) : (SCREEN_WIDTH / 2 / 64));
+	// Convert to tile grid
+
+	tx = sx >> 6; // sx / TILE_WIDTH
+	ty = sy >> 5; // sy / TILE_HEIGHT
+	px = sx & (TILE_WIDTH - 1);
+	py = sy & (TILE_HEIGHT - 1);
+
+	// Center player tile on screen
+	mx = ViewX + tx + ty - (zoomflag ? (SCREEN_WIDTH / TILE_WIDTH) : (SCREEN_WIDTH / 2 / TILE_WIDTH));
 	my = ViewY + ty - tx;
 
+	// Shift position to match diamond grid aligment
 	flipy = py < (px >> 1);
 	if (flipy) {
 		my--;
 	}
-	flipx = py >= 32 - (px >> 1);
+	flipx = py >= TILE_HEIGHT - (px >> 1);
 	if (flipx) {
 		mx++;
 	}
@@ -248,7 +311,7 @@ void CheckCursMove()
 		my = MAXDUNY - 1;
 	}
 
-	flipflag = flipy && flipx || (flipy || flipx) && px < 32;
+	flipflag = flipy && flipx || (flipy || flipx) && px < TILE_WIDTH / 2;
 
 	pcurstemp = pcursmonst;
 	pcursmonst = -1;
@@ -285,7 +348,7 @@ void CheckCursMove()
 	if (sbookflag && MouseX > RIGHT_PANEL) {
 		return;
 	}
-	if ((chrflag || questlog) && MouseX < 320) {
+	if ((chrflag || questlog) && MouseX < SPANEL_WIDTH) {
 		return;
 	}
 
@@ -352,9 +415,15 @@ void CheckCursMove()
 				cursmx = mx;
 				cursmy = my;
 			}
+#ifdef HELLFIRE
+			if (pcursmonst != -1 && monster[pcursmonst]._mFlags & MFLAG_GOLEM && !(monster[pcursmonst]._mFlags & MFLAG_BERSERK)) {
+				pcursmonst = -1;
+			}
+#else
 			if (pcursmonst != -1 && monster[pcursmonst]._mFlags & MFLAG_GOLEM) {
 				pcursmonst = -1;
 			}
+#endif
 			if (pcursmonst != -1) {
 				return;
 			}
@@ -420,9 +489,15 @@ void CheckCursMove()
 			cursmx = mx;
 			cursmy = my;
 		}
+#ifdef HELLFIRE
+		if (pcursmonst != -1 && monster[pcursmonst]._mFlags & MFLAG_GOLEM && !(monster[pcursmonst]._mFlags & MFLAG_BERSERK)) {
+			pcursmonst = -1;
+		}
+#else
 		if (pcursmonst != -1 && monster[pcursmonst]._mFlags & MFLAG_GOLEM) {
 			pcursmonst = -1;
 		}
+#endif
 	} else {
 		if (!flipflag && dMonster[mx + 1][my] > 0) {
 			pcursmonst = dMonster[mx + 1][my] - 1;
@@ -476,7 +551,7 @@ void CheckCursMove()
 		}
 		if (dFlags[mx][my] & BFLAG_DEAD_PLAYER) {
 			for (i = 0; i < MAX_PLRS; i++) {
-				if (plr[i].WorldX == mx && plr[i].WorldY == my && i != myplr) {
+				if (plr[i]._px == mx && plr[i]._py == my && i != myplr) {
 					cursmx = mx;
 					cursmy = my;
 					pcursplr = i;
@@ -488,7 +563,7 @@ void CheckCursMove()
 				for (yy = -1; yy < 2; yy++) {
 					if (dFlags[mx + xx][my + yy] & BFLAG_DEAD_PLAYER) {
 						for (i = 0; i < MAX_PLRS; i++) {
-							if (plr[i].WorldX == mx + xx && plr[i].WorldY == my + yy && i != myplr) {
+							if (plr[i]._px == mx + xx && plr[i]._py == my + yy && i != myplr) {
 								cursmx = mx + xx;
 								cursmy = my + yy;
 								pcursplr = i;
@@ -590,7 +665,13 @@ void CheckCursMove()
 		cursmx = mx;
 		cursmy = my;
 	}
+#ifdef HELLFIRE
+	if (pcursmonst != -1 && monster[pcursmonst]._mFlags & MFLAG_GOLEM && !(monster[pcursmonst]._mFlags & MFLAG_BERSERK)) {
+		pcursmonst = -1;
+	}
+#else
 	if (pcursmonst != -1 && monster[pcursmonst]._mFlags & MFLAG_GOLEM) {
 		pcursmonst = -1;
 	}
+#endif
 }

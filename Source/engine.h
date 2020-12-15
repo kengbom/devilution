@@ -1,15 +1,17 @@
-//HEADER_GOES_HERE
+/**
+ * @file engine.h
+ *
+ *  of basic engine helper functions:
+ * - Sprite blitting
+ * - Drawing
+ * - Angle calculation
+ * - RNG
+ * - Memory allocation
+ * - File loading
+ * - Video playback
+ */
 #ifndef __ENGINE_H__
 #define __ENGINE_H__
-
-//offset 0
-//pCelBuff->pFrameTable[0]
-
-extern char gbPixelCol;  // automap pixel color 8-bit (palette entry)
-extern BOOL gbRotateMap; // flip - if y < x
-extern int orgseed;
-extern int SeedCount;
-extern BOOL gbNotInView; // valid - if x/y are in bounds
 
 __FINLINE BYTE *CelGetFrame(BYTE *pCelBuff, int nCel, int *nDataSize);
 
@@ -32,7 +34,7 @@ void CelBlitLightTransSafe(BYTE *pDecodeTo, BYTE *pRLEBytes, int nDataSize, int 
 void CelDrawLightSafe(int sx, int sy, BYTE *pCelBuff, int nCel, int nWidth, int CelSkip, int CelCap);
 void CelClippedBlitLightTransSafe(BYTE *pBuff, BYTE *pCelBuff, int nCel, int nWidth, int CelSkip, int CelCap);
 void CelDrawLightRedSafe(int sx, int sy, BYTE *pCelBuff, int nCel, int nWidth, int CelSkip, int CelCap, char light);
-void CelBlitWidth(BYTE *pBuff, int always_0, int hgt, int wdt, BYTE *pCelBuff, int nCel, int nWidth);
+void CelBlitWidth(BYTE *pBuff, int x, int y, int wdt, BYTE *pCelBuff, int nCel, int nWidth);
 void CelBlitOutline(char col, int sx, int sy, BYTE *pCelBuff, int nCel, int nWidth, int CelSkip, int CelCap);
 void CelBlitOutlineSafe(char col, int sx, int sy, BYTE *pCelBuff, int nCel, int nWidth, int CelSkip, int CelCap);
 void ENG_set_pixel(int sx, int sy, BYTE col);
@@ -45,28 +47,17 @@ int random_(BYTE idx, int v);
 void engine_debug_trap(BOOL show_cursor);
 BYTE *DiabloAllocPtr(DWORD dwBytes);
 void mem_free_dbg(void *p);
-BYTE *LoadFileInMem(char *pszName, DWORD *pdwFileLen);
-DWORD LoadFileWithMem(const char *pszName, void *p);
+BYTE *LoadFileInMem(const char *pszName, DWORD *pdwFileLen);
+DWORD LoadFileWithMem(const char *pszName, BYTE *p);
 void Cl2ApplyTrans(BYTE *p, BYTE *ttbl, int nCel);
 void Cl2Draw(int sx, int sy, BYTE *pCelBuff, int nCel, int nWidth, int CelSkip, int CelCap);
-void Cl2Blit(BYTE *pDecodeTo, BYTE *pRLEBytes, int nDataSize, int nWidth);
 void Cl2DrawOutline(char col, int sx, int sy, BYTE *pCelBuff, int nCel, int nWidth, int CelSkip, int CelCap);
-void Cl2BlitOutline(BYTE *pDecodeTo, BYTE *pRLEBytes, int nDataSize, int nWidth, char col);
 void Cl2DrawLightTbl(int sx, int sy, BYTE *pCelBuff, int nCel, int nWidth, int CelSkip, int CelCap, char light);
-void Cl2BlitLight(BYTE *pDecodeTo, BYTE *pRLEBytes, int nDataSize, int nWidth, BYTE *pTable);
 void Cl2DrawLight(int sx, int sy, BYTE *pCelBuff, int nCel, int nWidth, int CelSkip, int CelCap);
 void Cl2DrawSafe(int sx, int sy, BYTE *pCelBuff, int nCel, int nWidth, int CelSkip, int CelCap);
-void Cl2BlitSafe(BYTE *pDecodeTo, BYTE *pRLEBytes, int nDataSize, int nWidth);
 void Cl2DrawOutlineSafe(char col, int sx, int sy, BYTE *pCelBuff, int nCel, int nWidth, int CelSkip, int CelCap);
-void Cl2BlitOutlineSafe(BYTE *pDecodeTo, BYTE *pRLEBytes, int nDataSize, int nWidth, char col);
 void Cl2DrawLightTblSafe(int sx, int sy, BYTE *pCelBuff, int nCel, int nWidth, int CelSkip, int CelCap, char light);
-void Cl2BlitLightSafe(BYTE *pDecodeTo, BYTE *pRLEBytes, int nDataSize, int nWidth, BYTE *pTable);
 void Cl2DrawLightSafe(int sx, int sy, BYTE *pCelBuff, int nCel, int nWidth, int CelSkip, int CelCap);
-void PlayInGameMovie(char *pszMovie);
-
-/* rdata */
-
-extern const int RndInc;
-extern const int RndMult;
+void PlayInGameMovie(const char *pszMovie);
 
 #endif /* __ENGINE_H__ */

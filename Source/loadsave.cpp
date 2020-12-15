@@ -1,7 +1,116 @@
-#include "diablo.h"
+/**
+ * @file loadsave.cpp
+ *
+ * Implementation of save game functionality.
+ */
+#include "all.h"
 
 BYTE *tbuff;
 
+static char BLoad()
+{
+	return *tbuff++;
+}
+
+static int WLoad()
+{
+	int rv = *tbuff++ << 24;
+	rv |= *tbuff++ << 16;
+	rv |= *tbuff++ << 8;
+	rv |= *tbuff++;
+
+	return rv;
+}
+
+static int ILoad()
+{
+	int rv = *tbuff++ << 24;
+	rv |= *tbuff++ << 16;
+	rv |= *tbuff++ << 8;
+	rv |= *tbuff++;
+
+	return rv;
+}
+
+static BOOL OLoad()
+{
+	if (*tbuff++ == TRUE)
+		return TRUE;
+	else
+		return FALSE;
+}
+
+static void LoadPlayer(int i)
+{
+	memcpy(&plr[i], tbuff, sizeof(*plr) - (10 * sizeof(void *)));
+	tbuff += sizeof(*plr) - (10 * sizeof(void *)); // omit last 10 pointers
+}
+
+static void LoadMonster(int i)
+{
+	memcpy(&monster[i], tbuff, sizeof(*monster) - (3 * sizeof(void *)));
+	tbuff += sizeof(*monster) - (3 * sizeof(void *)); // omit last 3 pointers
+	SyncMonsterAnim(i);
+}
+
+static void LoadMissile(int i)
+{
+	memcpy(&missile[i], tbuff, sizeof(*missile));
+	tbuff += sizeof(*missile);
+}
+
+static void LoadObject(int i)
+{
+	memcpy(&object[i], tbuff, sizeof(*object));
+	tbuff += sizeof(*object);
+}
+
+static void LoadItem(int i)
+{
+	memcpy(&item[i], tbuff, sizeof(*item));
+	tbuff += sizeof(*item);
+	GetItemFrm(i);
+}
+
+static void LoadPremium(int i)
+{
+	memcpy(&premiumitem[i], tbuff, sizeof(*premiumitem));
+	tbuff += sizeof(*premiumitem);
+}
+
+static void LoadQuest(int i)
+{
+	memcpy(&quests[i], tbuff, sizeof(*quests));
+	tbuff += sizeof(*quests);
+	ReturnLvlX = WLoad();
+	ReturnLvlY = WLoad();
+	ReturnLvl = WLoad();
+	ReturnLvlT = WLoad();
+	DoomQuestState = WLoad();
+}
+
+static void LoadLighting(int i)
+{
+	memcpy(&LightList[i], tbuff, sizeof(*LightList));
+	tbuff += sizeof(*LightList);
+}
+
+static void LoadVision(int i)
+{
+	memcpy(&VisionList[i], tbuff, sizeof(*VisionList));
+	tbuff += sizeof(*VisionList);
+}
+
+static void LoadPortal(int i)
+{
+	memcpy(&portal[i], tbuff, sizeof(*portal));
+	tbuff += sizeof(*portal);
+}
+
+/**
+ * @brief Load game state
+ * @param firstflag Can be set to false if we are simply reloading the current game
+ */
 void LoadGame(BOOL firstflag)
 {
 	int i, j;
@@ -16,7 +125,13 @@ void LoadGame(BOOL firstflag)
 	LoadBuff = pfile_read(szName, &dwLen);
 	tbuff = LoadBuff;
 
+#ifdef HELLFIRE
+	if (ILoad() != 'HELF')
+#elif defined(SPAWN)
+	if (ILoad() != 'SHAR')
+#else
 	if (ILoad() != 'RETL')
+#endif
 		app_fatal("Invalid save file");
 
 	setlevel = OLoad();
@@ -39,12 +154,17 @@ void LoadGame(BOOL firstflag)
 
 	LoadPlayer(myplr);
 
+#ifdef HELLFIRE
+	gnDifficulty = plr[myplr].pDifficulty;
+	if (gnDifficulty < DIFF_NORMAL || gnDifficulty > DIFF_HELL)
+		gnDifficulty = DIFF_NORMAL;
+#endif
 	for (i = 0; i < MAXQUESTS; i++)
 		LoadQuest(i);
 	for (i = 0; i < MAXPORTAL; i++)
 		LoadPortal(i);
 
-	LoadGameLevel(firstflag, 4);
+	LoadGameLevel(firstflag, ENTRY_LOAD);
 	SyncInitPlr(myplr);
 	SyncPlrAnim(myplr);
 
@@ -152,7 +272,7 @@ void LoadGame(BOOL firstflag)
 	numpremium = WLoad();
 	premiumlevel = WLoad();
 
-	for (i = 0; i < 6; i++)
+	for (i = 0; i < SMITH_PREMIUM_ITEMS; i++)
 		LoadPremium(i);
 
 	automapflag = OLoad();
@@ -172,103 +292,97 @@ void LoadGame(BOOL firstflag)
 	gbProcessPlayers = TRUE;
 }
 
-char BLoad()
+static void BSave(char v)
 {
-	return *tbuff++;
+	*tbuff++ = v;
 }
 
-int WLoad()
+static void WSave(int v)
 {
-	int rv = *tbuff++ << 24;
-	rv |= *tbuff++ << 16;
-	rv |= *tbuff++ << 8;
-	rv |= *tbuff++;
-
-	return rv;
+	*tbuff++ = v >> 24;
+	*tbuff++ = v >> 16;
+	*tbuff++ = v >> 8;
+	*tbuff++ = v;
 }
 
-int ILoad()
+static void ISave(int v)
 {
-	int rv = *tbuff++ << 24;
-	rv |= *tbuff++ << 16;
-	rv |= *tbuff++ << 8;
-	rv |= *tbuff++;
-
-	return rv;
+	*tbuff++ = v >> 24;
+	*tbuff++ = v >> 16;
+	*tbuff++ = v >> 8;
+	*tbuff++ = v;
 }
 
-BOOL OLoad()
+static void OSave(BOOL v)
 {
-	if (*tbuff++ == TRUE)
-		return TRUE;
+	if (v != FALSE)
+		*tbuff++ = TRUE;
 	else
-		return FALSE;
+		*tbuff++ = FALSE;
 }
 
-void LoadPlayer(int i)
+static void SavePlayer(int i)
 {
-	memcpy(&plr[i], tbuff, sizeof(*plr) - (10 * sizeof(void *)));
+	memcpy(tbuff, &plr[i], sizeof(*plr) - (10 * sizeof(void *)));
 	tbuff += sizeof(*plr) - (10 * sizeof(void *)); // omit last 10 pointers
 }
 
-void LoadMonster(int i)
+static void SaveMonster(int i)
 {
-	memcpy(&monster[i], tbuff, sizeof(*monster) - (3 * sizeof(void *)));
+	memcpy(tbuff, &monster[i], sizeof(*monster) - (3 * sizeof(void *)));
 	tbuff += sizeof(*monster) - (3 * sizeof(void *)); // omit last 3 pointers
-	SyncMonsterAnim(i);
 }
 
-void LoadMissile(int i)
+static void SaveMissile(int i)
 {
-	memcpy(&missile[i], tbuff, sizeof(*missile));
+	memcpy(tbuff, &missile[i], sizeof(*missile));
 	tbuff += sizeof(*missile);
 }
 
-void LoadObject(int i)
+static void SaveObject(int i)
 {
-	memcpy(&object[i], tbuff, sizeof(*object));
+	memcpy(tbuff, &object[i], sizeof(*object));
 	tbuff += sizeof(*object);
 }
 
-void LoadItem(int i)
+static void SaveItem(int i)
 {
-	memcpy(&item[i], tbuff, sizeof(*item));
+	memcpy(tbuff, &item[i], sizeof(*item));
 	tbuff += sizeof(*item);
-	GetItemFrm(i);
 }
 
-void LoadPremium(int i)
+static void SavePremium(int i)
 {
-	memcpy(&premiumitem[i], tbuff, sizeof(*premiumitem));
+	memcpy(tbuff, &premiumitem[i], sizeof(*premiumitem));
 	tbuff += sizeof(*premiumitem);
 }
 
-void LoadQuest(int i)
+static void SaveQuest(int i)
 {
-	memcpy(&quests[i], tbuff, sizeof(*quests));
+	memcpy(tbuff, &quests[i], sizeof(*quests));
 	tbuff += sizeof(*quests);
-	ReturnLvlX = WLoad();
-	ReturnLvlY = WLoad();
-	ReturnLvl = WLoad();
-	ReturnLvlT = WLoad();
-	DoomQuestState = WLoad();
+	WSave(ReturnLvlX);
+	WSave(ReturnLvlY);
+	WSave(ReturnLvl);
+	WSave(ReturnLvlT);
+	WSave(DoomQuestState);
 }
 
-void LoadLighting(int i)
+static void SaveLighting(int i)
 {
-	memcpy(&LightList[i], tbuff, sizeof(*LightList));
+	memcpy(tbuff, &LightList[i], sizeof(*LightList));
 	tbuff += sizeof(*LightList);
 }
 
-void LoadVision(int i)
+static void SaveVision(int i)
 {
-	memcpy(&VisionList[i], tbuff, sizeof(*VisionList));
+	memcpy(tbuff, &VisionList[i], sizeof(*VisionList));
 	tbuff += sizeof(*VisionList);
 }
 
-void LoadPortal(int i)
+static void SavePortal(int i)
 {
-	memcpy(&portal[i], tbuff, sizeof(*portal));
+	memcpy(tbuff, &portal[i], sizeof(*portal));
 	tbuff += sizeof(*portal);
 }
 
@@ -281,7 +395,13 @@ void SaveGame()
 	BYTE *SaveBuff = DiabloAllocPtr(dwLen);
 	tbuff = SaveBuff;
 
+#ifdef HELLFIRE
+	ISave('HELF');
+#elif defined(SPAWN)
+	ISave('SHAR');
+#else
 	ISave('RETL');
+#endif
 	OSave(setlevel);
 	WSave(setlvlnum);
 	WSave(currlevel);
@@ -300,6 +420,9 @@ void SaveGame()
 		WSave(gnLevelTypeTbl[i]);
 	}
 
+#ifdef HELLFIRE
+	plr[myplr].pDifficulty = gnDifficulty;
+#endif
 	SavePlayer(myplr);
 
 	for (i = 0; i < MAXQUESTS; i++)
@@ -401,7 +524,7 @@ void SaveGame()
 	WSave(numpremium);
 	WSave(premiumlevel);
 
-	for (i = 0; i < 6; i++)
+	for (i = 0; i < SMITH_PREMIUM_ITEMS; i++)
 		SavePremium(i);
 
 	OSave(automapflag);
@@ -415,100 +538,6 @@ void SaveGame()
 	pfile_write_hero();
 }
 
-void BSave(char v)
-{
-	*tbuff++ = v;
-}
-
-void WSave(int v)
-{
-	*tbuff++ = v >> 24;
-	*tbuff++ = v >> 16;
-	*tbuff++ = v >> 8;
-	*tbuff++ = v;
-}
-
-void ISave(int v)
-{
-	*tbuff++ = v >> 24;
-	*tbuff++ = v >> 16;
-	*tbuff++ = v >> 8;
-	*tbuff++ = v;
-}
-
-void OSave(BOOL v)
-{
-	if (v != FALSE)
-		*tbuff++ = TRUE;
-	else
-		*tbuff++ = FALSE;
-}
-
-void SavePlayer(int i)
-{
-	memcpy(tbuff, &plr[i], sizeof(*plr) - (10 * sizeof(void *)));
-	tbuff += sizeof(*plr) - (10 * sizeof(void *)); // omit last 10 pointers
-}
-
-void SaveMonster(int i)
-{
-	memcpy(tbuff, &monster[i], sizeof(*monster) - (3 * sizeof(void *)));
-	tbuff += sizeof(*monster) - (3 * sizeof(void *)); // omit last 3 pointers
-}
-
-void SaveMissile(int i)
-{
-	memcpy(tbuff, &missile[i], sizeof(*missile));
-	tbuff += sizeof(*missile);
-}
-
-void SaveObject(int i)
-{
-	memcpy(tbuff, &object[i], sizeof(*object));
-	tbuff += sizeof(*object);
-}
-
-void SaveItem(int i)
-{
-	memcpy(tbuff, &item[i], sizeof(*item));
-	tbuff += sizeof(*item);
-}
-
-void SavePremium(int i)
-{
-	memcpy(tbuff, &premiumitem[i], sizeof(*premiumitem));
-	tbuff += sizeof(*premiumitem);
-}
-
-void SaveQuest(int i)
-{
-	memcpy(tbuff, &quests[i], sizeof(*quests));
-	tbuff += sizeof(*quests);
-	WSave(ReturnLvlX);
-	WSave(ReturnLvlY);
-	WSave(ReturnLvl);
-	WSave(ReturnLvlT);
-	WSave(DoomQuestState);
-}
-
-void SaveLighting(int i)
-{
-	memcpy(tbuff, &LightList[i], sizeof(*LightList));
-	tbuff += sizeof(*LightList);
-}
-
-void SaveVision(int i)
-{
-	memcpy(tbuff, &VisionList[i], sizeof(*VisionList));
-	tbuff += sizeof(*VisionList);
-}
-
-void SavePortal(int i)
-{
-	memcpy(tbuff, &portal[i], sizeof(*portal));
-	tbuff += sizeof(*portal);
-}
-
 void SaveLevel()
 {
 	int i, j;
@@ -516,7 +545,7 @@ void SaveLevel()
 	int dwLen;
 	BYTE *SaveBuff;
 
-	if (!currlevel)
+	if (currlevel == 0)
 		glSeedTbl[0] = GetRndSeed();
 
 	dwLen = codec_get_encoded_len(FILEBUFF);
@@ -685,11 +714,11 @@ void LoadLevel()
 	AutomapZoomReset();
 	ResyncQuests();
 	SyncPortals();
-	dolighting = 1;
+	dolighting = TRUE;
 
 	for (i = 0; i < MAX_PLRS; i++) {
 		if (plr[i].plractive && currlevel == plr[i].plrlevel)
-			LightList[plr[i]._plid]._lunflag = 1;
+			LightList[plr[i]._plid]._lunflag = TRUE;
 	}
 
 	mem_free_dbg(LoadBuff);

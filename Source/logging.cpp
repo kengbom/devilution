@@ -1,9 +1,12 @@
-#include "diablo.h"
+/**
+ * @file logging.cpp
+ *
+ * Implementation of logging functionality.
+ */
+#include "all.h"
 #include "../3rdParty/Storm/Source/storm.h"
 
-#ifdef __cplusplus
 static CCritSect sgMemCrit;
-#endif
 CHAR FileName[MAX_PATH];
 char log_buffer[388];
 LPCVOID lpAddress;
@@ -11,38 +14,36 @@ DWORD nNumberOfBytesToWrite;
 
 /* data */
 
-BOOL log_not_created = 1;
+/** Has the log file not yet been created. */
+BOOL log_not_created = TRUE;
+/** Handle to the log file. */
 HANDLE log_file = INVALID_HANDLE_VALUE;
 
-void __cdecl log_flush(BOOL force_close)
+static void log_get_version(VS_FIXEDFILEINFO *file_info)
 {
-	DWORD NumberOfBytesWritten;
+	DWORD size, len, dwHandle;
+	unsigned int puLen;
+	void *version;
+	char Filename[MAX_PATH];
+	LPVOID lpBuffer;
 
-#ifdef __cplusplus
-	sgMemCrit.Enter();
-#endif
-	if (nNumberOfBytesToWrite) {
-		if (log_file == INVALID_HANDLE_VALUE) {
-			log_file = log_create();
-			if (log_file == INVALID_HANDLE_VALUE) {
-				nNumberOfBytesToWrite = 0;
-				return;
+	memset(file_info, 0, sizeof(*file_info));
+	if (GetModuleFileName(0, Filename, sizeof(Filename))) {
+		size = GetFileVersionInfoSize(Filename, &dwHandle);
+		if (size) {
+			version = VirtualAlloc(0, size, MEM_COMMIT, PAGE_READWRITE);
+			if (GetFileVersionInfo(Filename, 0, size, version) && VerQueryValue(version, "\\", &lpBuffer, &puLen)) {
+				len = puLen;
+				if (puLen >= 52)
+					len = 52;
+				memcpy(file_info, lpBuffer, len);
 			}
-			SetFilePointer(log_file, 0, NULL, FILE_END);
+			VirtualFree(version, 0, MEM_RELEASE);
 		}
-		WriteFile(log_file, lpAddress, nNumberOfBytesToWrite, &NumberOfBytesWritten, 0);
-		nNumberOfBytesToWrite = 0;
 	}
-	if (force_close && log_file != INVALID_HANDLE_VALUE) {
-		CloseHandle(log_file);
-		log_file = INVALID_HANDLE_VALUE;
-	}
-#ifdef __cplusplus
-	sgMemCrit.Leave();
-#endif
 }
 
-HANDLE log_create()
+static HANDLE log_create()
 {
 	char *last_slash_pos;
 	HANDLE fh;
@@ -94,47 +95,55 @@ HANDLE log_create()
 	return fh;
 }
 
-void log_get_version(VS_FIXEDFILEINFO *file_info)
+void __cdecl log_flush(BOOL force_close)
 {
-	DWORD size, len, dwHandle;
-	unsigned int puLen;
-	void *version;
-	char Filename[MAX_PATH];
-	LPVOID lpBuffer;
+	DWORD NumberOfBytesWritten;
 
-	memset(file_info, 0, sizeof(*file_info));
-	if (GetModuleFileName(0, Filename, sizeof(Filename))) {
-		size = GetFileVersionInfoSize(Filename, &dwHandle);
-		if (size) {
-			version = VirtualAlloc(0, size, MEM_COMMIT, PAGE_READWRITE);
-			if (GetFileVersionInfo(Filename, 0, size, version) && VerQueryValue(version, "\\", &lpBuffer, &puLen)) {
-				len = puLen;
-				if (puLen >= 52)
-					len = 52;
-				memcpy(file_info, lpBuffer, len);
+	sgMemCrit.Enter();
+	if (nNumberOfBytesToWrite) {
+		if (log_file == INVALID_HANDLE_VALUE) {
+			log_file = log_create();
+			if (log_file == INVALID_HANDLE_VALUE) {
+				nNumberOfBytesToWrite = 0;
+				return;
 			}
-			VirtualFree(version, 0, MEM_RELEASE);
+			SetFilePointer(log_file, 0, NULL, FILE_END);
 		}
+		WriteFile(log_file, lpAddress, nNumberOfBytesToWrite, &NumberOfBytesWritten, 0);
+		nNumberOfBytesToWrite = 0;
 	}
+	if (force_close && log_file != INVALID_HANDLE_VALUE) {
+		CloseHandle(log_file);
+		log_file = INVALID_HANDLE_VALUE;
+	}
+	sgMemCrit.Leave();
 }
 
 void __cdecl log_printf(const char *pszFmt, ...)
 {
+#ifdef HELLFIRE
+	CHAR Buffer[1024];
+	DWORD NumberOfBytesWritten, nNumberOfBytesToWrite;
+	va_list va;
+
+	va_start(va, pszFmt);
+	nNumberOfBytesToWrite = wvsprintf(Buffer, va_arg(va, const CHAR *), va);
+	WriteFile((HANDLE)pszFmt, Buffer, nNumberOfBytesToWrite, &NumberOfBytesWritten, 0);
+	va_end(va);
+#else
 	size_t size;
 	char *pBuffer;
 	char msg[512];
 	va_list va;
 
-#ifdef __cplusplus
 	sgMemCrit.Enter();
-#endif
 	va_start(va, pszFmt);
 	_vsnprintf(msg, 0x200, pszFmt, va);
 	va_end(va);
 	msg[511] = 0;
 	size = strlen(msg);
 	if (size + nNumberOfBytesToWrite > 0x1000) {
-		log_flush(0);
+		log_flush(FALSE);
 	}
 
 	if (lpAddress == NULL) {
@@ -147,7 +156,6 @@ void __cdecl log_printf(const char *pszFmt, ...)
 		memcpy(&pBuffer[nNumberOfBytesToWrite], msg, size);
 		nNumberOfBytesToWrite += size;
 	}
-#ifdef __cplusplus
 	sgMemCrit.Leave();
 #endif
 }

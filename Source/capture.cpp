@@ -1,46 +1,18 @@
-#include "diablo.h"
+/**
+ * @file capture.cpp
+ *
+ * Implementation of the screenshot function.
+ */
+#include "all.h"
 
-void CaptureScreen()
-{
-	HANDLE hObject;
-	PALETTEENTRY palette[256];
-	char FileName[MAX_PATH];
-	BOOL success;
-
-	hObject = CaptureFile(FileName);
-	if (hObject != INVALID_HANDLE_VALUE) {
-		DrawAndBlit();
-#ifdef __cplusplus
-		lpDDPalette->GetEntries(0, 0, 256, palette);
-#else
-		lpDDPalette->lpVtbl->GetEntries(lpDDPalette, 0, 0, 256, palette);
-#endif
-		RedPalette(palette);
-
-		lock_buf(2);
-		success = CaptureHdr(hObject, SCREEN_WIDTH, SCREEN_HEIGHT);
-		if (success) {
-			success = CapturePix(hObject, SCREEN_WIDTH, SCREEN_HEIGHT, BUFFER_WIDTH, &gpBuffer[SCREENXY(0, 0)]);
-			if (success) {
-				success = CapturePal(hObject, palette);
-			}
-		}
-		unlock_buf(2);
-		CloseHandle(hObject);
-
-		if (!success)
-			DeleteFile(FileName);
-
-		Sleep(300);
-#ifdef __cplusplus
-		lpDDPalette->SetEntries(0, 0, 256, palette);
-#else
-		lpDDPalette->lpVtbl->SetEntries(lpDDPalette, 0, 0, 256, palette);
-#endif
-	}
-}
-
-BOOL CaptureHdr(HANDLE hFile, short width, short height)
+/**
+ * @brief Write the PCX-file header
+ * @param hFile File handler for the PCX file.
+ * @param width Image width
+ * @param height Image height
+ * @return True on success
+ */
+static BOOL CaptureHdr(HANDLE hFile, short width, short height)
 {
 	DWORD lpNumBytes;
 	PCXHEADER Buffer;
@@ -60,10 +32,16 @@ BOOL CaptureHdr(HANDLE hFile, short width, short height)
 	return WriteFile(hFile, &Buffer, sizeof(Buffer), &lpNumBytes, NULL) && lpNumBytes == sizeof(Buffer);
 }
 
-BOOL CapturePal(HANDLE hFile, PALETTEENTRY *palette)
+/**
+ * @brief Write the current ingame palette to the PCX file
+ * @param hFile File handler for the PCX file.
+ * @param palette Current palette
+ * @return True if successful, else false
+ */
+static BOOL CapturePal(HANDLE hFile, PALETTEENTRY *palette)
 {
 	DWORD NumberOfBytesWritten;
-	BYTE pcx_palette[769];
+	BYTE pcx_palette[1 + 256 * 3];
 	int i;
 
 	pcx_palette[0] = 12;
@@ -73,30 +51,18 @@ BOOL CapturePal(HANDLE hFile, PALETTEENTRY *palette)
 		pcx_palette[1 + 3 * i + 2] = palette[i].peBlue;
 	}
 
-	return WriteFile(hFile, pcx_palette, 769, &NumberOfBytesWritten, 0) && NumberOfBytesWritten == 769;
+	return WriteFile(hFile, pcx_palette, sizeof(pcx_palette), &NumberOfBytesWritten, NULL) && NumberOfBytesWritten == sizeof(pcx_palette);
 }
 
-BOOL CapturePix(HANDLE hFile, WORD width, WORD height, WORD stride, BYTE *pixels)
-{
-	int writeSize;
-	DWORD lpNumBytes;
-	BYTE *pBuffer, *pBufferEnd;
+/**
+ * @brief RLE compress the pixel data
+ * @param src Raw pixel buffer
+ * @param dst Output buffer
+ * @param width Width of pixel buffer
 
-	pBuffer = (BYTE *)DiabloAllocPtr(2 * width);
-	while (height != 0) {
-		height--;
-		pBufferEnd = CaptureEnc(pixels, pBuffer, width);
-		pixels += stride;
-		writeSize = pBufferEnd - pBuffer;
-		if (!(WriteFile(hFile, pBuffer, writeSize, &lpNumBytes, 0) && lpNumBytes == writeSize)) {
-			return FALSE;
-		}
-	}
-	mem_free_dbg(pBuffer);
-	return TRUE;
-}
-
-BYTE *CaptureEnc(BYTE *src, BYTE *dst, int width)
+ * @return Output buffer
+ */
+static BYTE *CaptureEnc(BYTE *src, BYTE *dst, int width)
 {
 	int rleLength;
 
@@ -130,7 +96,35 @@ BYTE *CaptureEnc(BYTE *src, BYTE *dst, int width)
 	return dst;
 }
 
-HANDLE CaptureFile(char *dst_path)
+/**
+ * @brief Write the pixel data to the PCX file
+ * @param hFile File handler for the PCX file.
+ * @param width Image width
+ * @param height Image height
+ * @param stride Buffer width
+ * @param pixels Raw pixel buffer
+ * @return True if successful, else false
+ */
+static BOOL CapturePix(HANDLE hFile, WORD width, WORD height, WORD stride, BYTE *pixels)
+{
+	int writeSize;
+	DWORD lpNumBytes;
+	BYTE *pBuffer, *pBufferEnd;
+
+	pBuffer = (BYTE *)DiabloAllocPtr(2 * width);
+	while (height--) {
+		pBufferEnd = CaptureEnc(pixels, pBuffer, width);
+		pixels += stride;
+		writeSize = pBufferEnd - pBuffer;
+		if (!(WriteFile(hFile, pBuffer, writeSize, &lpNumBytes, NULL) && lpNumBytes == writeSize)) {
+			return FALSE;
+		}
+	}
+	mem_free_dbg(pBuffer);
+	return TRUE;
+}
+
+static HANDLE CaptureFile(char *dst_path)
 {
 	BOOLEAN num_used[100];
 	int free_num, hFind;
@@ -158,7 +152,11 @@ HANDLE CaptureFile(char *dst_path)
 	return INVALID_HANDLE_VALUE;
 }
 
-void RedPalette(PALETTEENTRY *pal)
+/**
+ * @brief Make a red version of the given palette and apply it to the screen.
+ * @param pal The original palette
+ */
+static void RedPalette(PALETTEENTRY *pal)
 {
 	PALETTEENTRY red[256];
 	int i;
@@ -170,9 +168,41 @@ void RedPalette(PALETTEENTRY *pal)
 		red[i].peFlags = 0;
 	}
 
-#ifdef __cplusplus
 	lpDDPalette->SetEntries(0, 0, 256, red);
-#else
-	lpDDPalette->lpVtbl->SetEntries(lpDDPalette, 0, 0, 256, red);
-#endif
+}
+
+/**
+ * @brief Save the current screen to a screen??.PCX (00-99) in file if available, then make the screen red for 200ms.
+
+ */
+void CaptureScreen()
+{
+	HANDLE hObject;
+	PALETTEENTRY palette[256];
+	char FileName[MAX_PATH];
+	BOOL success;
+
+	hObject = CaptureFile(FileName);
+	if (hObject != INVALID_HANDLE_VALUE) {
+		DrawAndBlit();
+		lpDDPalette->GetEntries(0, 0, 256, palette);
+		RedPalette(palette);
+
+		lock_buf(2);
+		success = CaptureHdr(hObject, SCREEN_WIDTH, SCREEN_HEIGHT);
+		if (success) {
+			success = CapturePix(hObject, SCREEN_WIDTH, SCREEN_HEIGHT, BUFFER_WIDTH, &gpBuffer[SCREENXY(0, 0)]);
+		}
+		if (success) {
+			success = CapturePal(hObject, palette);
+		}
+		unlock_buf(2);
+		CloseHandle(hObject);
+
+		if (!success)
+			DeleteFile(FileName);
+
+		Sleep(300);
+		lpDDPalette->SetEntries(0, 0, 256, palette);
+	}
 }

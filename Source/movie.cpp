@@ -1,10 +1,22 @@
-#include "diablo.h"
+/**
+ * @file movie.cpp
+ *
+ * Implementation of video playback.
+ */
+#include "all.h"
 #include "../3rdParty/Storm/Source/storm.h"
 
+/** Should the movie continue playing. */
 BYTE movie_playing;
+/** Should the movie play in a loop. */
 BOOL loop_movie;
 
-void play_movie(char *pszMovie, BOOL user_can_close)
+/**
+ * @brief Start playback of a given video.
+ * @param pszMovie The file name of the video
+ * @param user_can_close Set to false to make the video unskippable.
+ */
+void play_movie(const char *pszMovie, BOOL user_can_close)
 {
 	WNDPROC saveProc;
 	HANDLE video_stream;
@@ -14,11 +26,11 @@ void play_movie(char *pszMovie, BOOL user_can_close)
 	}
 
 	saveProc = SetWindowProc(MovieWndProc);
-	InvalidateRect(ghMainWnd, 0, 0);
+	InvalidateRect(ghMainWnd, NULL, 0);
 	UpdateWindow(ghMainWnd);
 	movie_playing = TRUE;
 	sound_disable_music(TRUE);
-	sfx_stop();
+	stream_stop();
 	effects_play_sound("Sfx\\Misc\\blank.wav");
 
 	SVidPlayBegin(pszMovie, 0, 0, 0, 0, loop_movie ? 0x100C0808 : 0x10280808, &video_stream);
@@ -43,6 +55,10 @@ void play_movie(char *pszMovie, BOOL user_can_close)
 	sound_disable_music(FALSE);
 }
 
+/**
+ * @brief Input handler for use during video playback.
+ * @see WNDPROC
+ */
 LRESULT __stdcall MovieWndProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
 {
 	switch (Msg) {

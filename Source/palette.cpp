@@ -1,15 +1,28 @@
-#include "diablo.h"
+/**
+ * @file palette.cpp
+ *
+ * Implementation of functions for handling the engines color palette.
+ */
+#include "all.h"
 #include "../3rdParty/Storm/Source/storm.h"
 
+/** In-memory palette to which gamma corrections are applied. */
 PALETTEENTRY logical_palette[256];
+/** The active palette of the system. */
 PALETTEENTRY system_palette[256];
+/** The original palette as loaded from file. */
 PALETTEENTRY orig_palette[256];
 int gdwPalEntries;
 
 /* data */
 
+/** Specifies the gamma correction level. */
 int gamma_correction = 100;
+#ifndef HELLFIRE
+/** Specifies whether colour cycling is enabled. */
 BOOL color_cycling_enabled = TRUE;
+#endif
+/** Specifies whether the palette has max brightness. */
 BOOLEAN sgbFadedIn = TRUE;
 
 static void palette_update()
@@ -46,8 +59,10 @@ static void ApplyGamma(PALETTEENTRY *dst, PALETTEENTRY *src, int n)
 
 void SaveGamma()
 {
-	SRegSaveValue("Diablo", "Gamma Correction", 0, gamma_correction);
-	SRegSaveValue("Diablo", "Color Cycling", FALSE, color_cycling_enabled);
+	SRegSaveValue(APP_NAME, "Gamma Correction", 0, gamma_correction);
+#ifndef HELLFIRE
+	SRegSaveValue(APP_NAME, "Color Cycling", FALSE, color_cycling_enabled);
+#endif
 }
 
 static void LoadGamma()
@@ -56,7 +71,7 @@ static void LoadGamma()
 	int value;
 
 	value = gamma_correction;
-	if (!SRegLoadValue("Diablo", "Gamma Correction", 0, &value))
+	if (!SRegLoadValue(APP_NAME, "Gamma Correction", 0, &value))
 		value = 100;
 	gamma_value = value;
 	if (value < 30) {
@@ -65,9 +80,11 @@ static void LoadGamma()
 		gamma_value = 100;
 	}
 	gamma_correction = gamma_value - gamma_value % 5;
-	if (!SRegLoadValue("Diablo", "Color Cycling", 0, &value))
+#ifndef HELLFIRE
+	if (!SRegLoadValue(APP_NAME, "Color Cycling", 0, &value))
 		value = 1;
 	color_cycling_enabled = value;
+#endif
 }
 
 static void LoadSysPal()
@@ -104,25 +121,21 @@ void palette_init()
 	LoadGamma();
 	memcpy(system_palette, orig_palette, sizeof(orig_palette));
 	LoadSysPal();
-#ifdef __cplusplus
-	error_code = lpDDInterface->CreatePalette(DDPCAPS_ALLOW256 | DDPCAPS_8BIT, system_palette, &lpDDPalette, NULL);
+#ifdef HELLFIRE
+	error_code = lpDDInterface->CreatePalette(DDPCAPS_ALLOW256 | DDPCAPS_INITIALIZE | DDPCAPS_8BIT, system_palette, &lpDDPalette, NULL);
 #else
-	error_code = lpDDInterface->lpVtbl->CreatePalette(lpDDInterface, DDPCAPS_ALLOW256 | DDPCAPS_8BIT, system_palette, &lpDDPalette, NULL);
+	error_code = lpDDInterface->CreatePalette(DDPCAPS_ALLOW256 | DDPCAPS_8BIT, system_palette, &lpDDPalette, NULL);
 #endif
 	if (error_code)
 		ErrDlg(IDD_DIALOG8, error_code, "C:\\Src\\Diablo\\Source\\PALETTE.CPP", 143);
-#ifdef __cplusplus
 	error_code = lpDDSPrimary->SetPalette(lpDDPalette);
-#else
-	error_code = lpDDSPrimary->lpVtbl->SetPalette(lpDDSPrimary, lpDDPalette);
-#endif
 #ifndef RGBMODE
 	if (error_code)
 		ErrDlg(IDD_DIALOG8, error_code, "C:\\Src\\Diablo\\Source\\PALETTE.CPP", 146);
 #endif
 }
 
-void LoadPalette(char *pszFileName)
+void LoadPalette(const char *pszFileName)
 {
 	int i;
 	void *pBuf;
@@ -130,7 +143,7 @@ void LoadPalette(char *pszFileName)
 
 	/// ASSERT: assert(pszFileName);
 
-	WOpenFile(pszFileName, &pBuf, 0);
+	WOpenFile(pszFileName, &pBuf, FALSE);
 	WReadFile(pBuf, (char *)PalData, sizeof(PalData));
 	WCloseFile(pBuf);
 
@@ -152,6 +165,17 @@ void LoadRndLvlPal(int l)
 	} else {
 		rv = random_(0, 4) + 1;
 		sprintf(szFileName, "Levels\\L%iData\\L%i_%i.PAL", l, l, rv);
+#ifdef HELLFIRE
+		if (l == 5) {
+			sprintf(szFileName, "NLevels\\L5Data\\L5Base.PAL");
+		}
+		if (l == 6) {
+			if (!UseNestArt) {
+				rv++;
+			}
+			sprintf(szFileName, "NLevels\\L%iData\\L%iBase%i.PAL", 6, 6, rv);
+		}
+#endif
 		LoadPalette(szFileName);
 	}
 }
@@ -159,13 +183,8 @@ void LoadRndLvlPal(int l)
 void ResetPal()
 {
 	if (!lpDDSPrimary
-#ifdef __cplusplus
 	    || lpDDSPrimary->IsLost() != DDERR_SURFACELOST
 	    || !lpDDSPrimary->Restore()) {
-#else
-	    || lpDDSPrimary->lpVtbl->IsLost(lpDDSPrimary) != DDERR_SURFACELOST
-	    || !lpDDSPrimary->lpVtbl->Restore(lpDDSPrimary)) {
-#endif
 		SDrawRealizePalette();
 	}
 }
@@ -207,17 +226,13 @@ static void SetFadeLevel(DWORD fadeval)
 	int i;
 
 	if (lpDDInterface) {
-		for (i = 0; i < 255; i++) {
+		for (i = 0; i < 255; i++) { // BUGFIX: should be 256
 			system_palette[i].peRed = (fadeval * logical_palette[i].peRed) >> 8;
 			system_palette[i].peGreen = (fadeval * logical_palette[i].peGreen) >> 8;
 			system_palette[i].peBlue = (fadeval * logical_palette[i].peBlue) >> 8;
 		}
 		Sleep(3);
-#ifdef __cplusplus
 		lpDDInterface->WaitForVerticalBlank(DDWAITVB_BLOCKBEGIN, NULL);
-#else
-		lpDDInterface->lpVtbl->WaitForVerticalBlank(lpDDInterface, DDWAITVB_BLOCKBEGIN, NULL);
-#endif
 		palette_update();
 	}
 }
@@ -271,6 +286,85 @@ void palette_update_caves()
 	palette_update();
 }
 
+#ifdef HELLFIRE
+int dword_6E2D58;
+int dword_6E2D54;
+void palette_update_crypt()
+{
+	int i;
+	PALETTEENTRY col;
+
+	if (dword_6E2D58 > 1) {
+		col = system_palette[15];
+		for (i = 15; i > 1; i--) {
+			system_palette[i].peRed = system_palette[i - 1].peRed;
+			system_palette[i].peGreen = system_palette[i - 1].peGreen;
+			system_palette[i].peBlue = system_palette[i - 1].peBlue;
+		}
+		system_palette[i].peRed = col.peRed;
+		system_palette[i].peGreen = col.peGreen;
+		system_palette[i].peBlue = col.peBlue;
+
+		dword_6E2D58 = 0;
+	} else {
+		dword_6E2D58++;
+	}
+	if (dword_6E2D54 > 0) {
+		col = system_palette[31];
+		for (i = 31; i > 16; i--) {
+			system_palette[i].peRed = system_palette[i - 1].peRed;
+			system_palette[i].peGreen = system_palette[i - 1].peGreen;
+			system_palette[i].peBlue = system_palette[i - 1].peBlue;
+		}
+		system_palette[i].peRed = col.peRed;
+		system_palette[i].peGreen = col.peGreen;
+		system_palette[i].peBlue = col.peBlue;
+		palette_update();
+		dword_6E2D54++;
+	} else {
+		dword_6E2D54 = 1;
+	}
+}
+
+int dword_6E2D5C;
+int dword_6E2D60;
+void palette_update_hive()
+{
+	int i;
+	PALETTEENTRY col;
+
+	if (dword_6E2D60 == 2) {
+		col = system_palette[8];
+		for (i = 8; i > 1; i--) {
+			system_palette[i].peRed = system_palette[i - 1].peRed;
+			system_palette[i].peGreen = system_palette[i - 1].peGreen;
+			system_palette[i].peBlue = system_palette[i - 1].peBlue;
+		}
+		system_palette[i].peRed = col.peRed;
+		system_palette[i].peGreen = col.peGreen;
+		system_palette[i].peBlue = col.peBlue;
+		dword_6E2D60 = 0;
+	} else {
+		dword_6E2D60++;
+	}
+	if (dword_6E2D5C == 2) {
+		col = system_palette[15];
+		for (i = 15; i > 9; i--) {
+			system_palette[i].peRed = system_palette[i - 1].peRed;
+			system_palette[i].peGreen = system_palette[i - 1].peGreen;
+			system_palette[i].peBlue = system_palette[i - 1].peBlue;
+		}
+		system_palette[i].peRed = col.peRed;
+		system_palette[i].peGreen = col.peGreen;
+		system_palette[i].peBlue = col.peBlue;
+		palette_update();
+		dword_6E2D5C = 0;
+	} else {
+		dword_6E2D5C++;
+	}
+}
+
+#endif
 #ifndef SPAWN
 void palette_update_quest_palette(int n)
 {
@@ -284,7 +378,8 @@ void palette_update_quest_palette(int n)
 }
 #endif
 
-BOOL palette_get_colour_cycling()
+#ifndef HELLFIRE
+BOOL palette_get_color_cycling()
 {
 	return color_cycling_enabled;
 }
@@ -294,3 +389,4 @@ BOOL palette_set_color_cycling(BOOL enabled)
 	color_cycling_enabled = enabled;
 	return enabled;
 }
+#endif

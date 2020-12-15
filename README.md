@@ -3,7 +3,7 @@
 [![Build status](https://img.shields.io/github/downloads/diasurgical/devilution/total.svg)](https://github.com/diasurgical/devilution/releases)
 [![github stars](https://img.shields.io/github/stars/diasurgical/devilution.svg)](https://github.com/diasurgical/devilution/stargazers)
 
-![Discord Channel](https://avatars3.githubusercontent.com/u/1965106?s=16&v=4) [Discord Chat Channel](https://discord.gg/aQBQdDe)
+![Discord Channel](https://avatars3.githubusercontent.com/u/1965106?s=16&v=4) [Discord Chat Channel](https://discord.gg/YQKCAYQ)
 
 # Devilution
 Diablo devolved - magic behind the 1996 computer game
@@ -103,6 +103,7 @@ That's a tricky question. Under the DMCA, reverse-engineering has exceptions for
 - [BWAPI Team](https://github.com/bwapi) - providing library API to work with Storm
 - [Ladislav Zezula](https://github.com/ladislav-zezula) - reversing PKWARE library, further documenting Storm
 - [fearedbliss](https://github.com/fearedbliss) - being awe-inspiring
+- Diablodin - providing additional info about the PSX release
 - Climax Studios & Sony - secretly helping with their undercover QA :P
 - Blizzard North - wait, this was a typo!
 - Depression - reason to waste four months of my life doing this ;)
@@ -114,6 +115,8 @@ And a special thanks to all the support and people who work on this project to m
 
 # Legal
 Devilution is released to the Public Domain. The documentation and function provided by Devilution may only be utilized with assets provided by ownership of Diablo.
+
+The source code in this repository is for non-commerical use only. If you use the source code you may not charge others for access to it or any derivative work thereof.
 
 Battle.net(R) - Copyright (C) 1996 Blizzard Entertainment, Inc. All rights reserved. Battle.net and Blizzard Entertainment are trademarks or registered trademarks of Blizzard Entertainment, Inc. in the U.S. and/or other countries.
 

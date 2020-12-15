@@ -1,15 +1,21 @@
-#include "diablo.h"
+/**
+ * @file minitext.cpp
+ *
+ * Implementation of scrolling dialog text.
+ */
+#include "all.h"
 
 int qtexty;
-char *qtextptr;
-int qtextSpd;
-BOOLEAN qtextflag;
-int scrolltexty;
+const char *qtextptr;
 int sgLastScroll;
+BOOLEAN qtextflag;
+int qtextDelay;
+int qtextSpd;
 BYTE *pMedTextCels;
 BYTE *pTextBoxCels;
 
-const BYTE mfontframe[127] = {
+/** Maps from font index to medtexts.cel frame number. */
+const BYTE mfontframe[128] = {
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -22,8 +28,13 @@ const BYTE mfontframe[127] = {
 	26, 42, 0, 43, 0, 0, 0, 1, 2, 3,
 	4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
 	14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-	24, 25, 26, 48, 0, 49, 0
+	24, 25, 26, 48, 0, 49, 0, 0
 };
+/**
+ * Maps from medtexts.cel frame number to character width. Note, the
+ * character width may be distinct from the frame width, which is 22 for every
+ * medtexts.cel frame.
+ */
 const BYTE mfontkern[56] = {
 	5, 15, 10, 13, 14, 10, 9, 13, 11, 5,
 	5, 11, 10, 16, 13, 16, 10, 15, 12, 10,
@@ -36,7 +47,8 @@ const BYTE mfontkern[56] = {
 /* data */
 
 /**
- * Positive numbers will delay scrolling 1 out of n frames, negative numbers will scroll 1+(-n) pixels.
+ * Text scroll speeds. Positive numbers will delay scrolling 1 out of n frames,
+ * negative numbers will scroll 1+(-n) pixels.
  */
 int qscroll_spd_tbl[9] = { 2, 4, 6, 8, 0, -1, -2, -3, -4 };
 
@@ -59,17 +71,17 @@ void InitQTextMsg(int m)
 		questlog = FALSE;
 		qtextptr = alltext[m].txtstr;
 		qtextflag = TRUE;
-		qtexty = 500;
-		sgLastScroll = qscroll_spd_tbl[alltext[m].txtspd - 1];
-		scrolltexty = sgLastScroll;
-		qtextSpd = GetTickCount();
+		qtexty = 340 + SCREEN_Y;
+		qtextSpd = qscroll_spd_tbl[alltext[m].txtspd - 1];
+		qtextDelay = qtextSpd;
+		sgLastScroll = GetTickCount();
 	}
 	PlaySFX(alltext[m].sfxnr);
 }
 
 void DrawQTextBack()
 {
-	CelDraw(PANEL_X + 24, 487, pTextBoxCels, 1, 591);
+	CelDraw(PANEL_X + 24, SCREEN_Y + 327, pTextBoxCels, 1, 591);
 
 #define TRANS_RECT_X (PANEL_LEFT + 27)
 #define TRANS_RECT_Y 28
@@ -199,7 +211,7 @@ void DrawQText()
 {
 	int i, l, w, tx, ty;
 	BYTE c;
-	char *p, *pnl, *s;
+	const char *p, *pnl, *s;
 	char tempstr[128];
 	BOOL doneflag;
 	DWORD currTime;
@@ -253,26 +265,26 @@ void DrawQText()
 		}
 		tx = 48 + PANEL_X;
 		ty += 38;
-		if (ty > 501) {
+		if (ty > 341 + SCREEN_Y) {
 			doneflag = TRUE;
 		}
 	}
 
 	currTime = GetTickCount();
 	while (1) {
-		if (sgLastScroll <= 0) {
+		if (qtextSpd <= 0) {
 			qtexty--;
-			qtexty += sgLastScroll;
+			qtexty += qtextSpd;
 		} else {
-			scrolltexty--;
-			if (scrolltexty != 0) {
+			qtextDelay--;
+			if (qtextDelay != 0) {
 				qtexty--;
 			}
 		}
-		if (scrolltexty == 0) {
-			scrolltexty = sgLastScroll;
+		if (qtextDelay == 0) {
+			qtextDelay = qtextSpd;
 		}
-		if (qtexty <= 209) {
+		if (qtexty <= 49 + SCREEN_Y) {
 			qtexty += 38;
 			qtextptr = pnl;
 			if (*pnl == '|') {
@@ -280,8 +292,8 @@ void DrawQText()
 			}
 			break;
 		}
-		qtextSpd += 50;
-		if (currTime - qtextSpd >= 0x7FFFFFFF) {
+		sgLastScroll += 50;
+		if (currTime - sgLastScroll >= 0x7FFFFFFF) {
 			break;
 		}
 	}

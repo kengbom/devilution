@@ -1,4 +1,9 @@
-#include "diablo.h"
+/**
+ * @file track.cpp
+ *
+ * Implementation of functionality tracking what the mouse cursor is pointing at.
+ */
+#include "all.h"
 #include "../3rdParty/Storm/Source/storm.h"
 
 static BYTE sgbIsScrolling;
@@ -22,7 +27,7 @@ void track_process()
 			sgdwLastWalk = tick;
 			NetSendCmdLoc(TRUE, CMD_WALKXY, cursmx, cursmy);
 			if (!sgbIsScrolling)
-				sgbIsScrolling = 1;
+				sgbIsScrolling = TRUE;
 		}
 	}
 }
@@ -34,11 +39,11 @@ void track_repeat_walk(BOOL rep)
 
 	sgbIsWalking = rep;
 	if (rep) {
-		sgbIsScrolling = 0;
+		sgbIsScrolling = FALSE;
 		sgdwLastWalk = GetTickCount() - 50;
 		NetSendCmdLoc(TRUE, CMD_WALKXY, cursmx, cursmy);
 	} else if (sgbIsScrolling) {
-		sgbIsScrolling = 0;
+		sgbIsScrolling = FALSE;
 	}
 }
 

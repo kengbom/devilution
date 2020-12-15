@@ -1,12 +1,18 @@
-#include "diablo.h"
+/**
+ * @file debug.cpp
+ *
+ * Implementation of debug functions.
+ */
+#include "all.h"
 
 #ifdef _DEBUG
 BOOL update_seed_check = FALSE;
 #endif
 
+#define DEBUGSEEDS 4096
 int seed_index;
-int level_seeds[NUMLEVELS];
-int seed_table[4096];
+int level_seeds[NUMLEVELS + 1];
+int seed_table[DEBUGSEEDS];
 
 BYTE *pSquareCel;
 char dMonsDbg[NUMLEVELS][MAXDUNX][MAXDUNY];
@@ -28,7 +34,7 @@ void init_seed_desync()
 {
 	int i;
 
-	for (i = 0; i < 4096; i++) {
+	for (i = 0; i < DEBUGSEEDS; i++) {
 		seed_table[i] = -1;
 	}
 
@@ -61,7 +67,7 @@ void seed_desync_index_set()
 
 void seed_desync_check(int seed)
 {
-	if (!update_seed_check || seed_index == 4096 || currlevel == 0) {
+	if (!update_seed_check || seed_index == DEBUGSEEDS || currlevel == 0) {
 		return;
 	}
 
@@ -81,9 +87,9 @@ void CheckDungeonClear()
 
 	for (j = 0; j < MAXDUNY; j++) {
 		for (i = 0; i < MAXDUNX; i++) {
-			if (dMonster[i][j])
+			if (dMonster[i][j] != 0)
 				app_fatal("Monsters not cleared");
-			if (dPlayer[i][j])
+			if (dPlayer[i][j] != 0)
 				app_fatal("Players not cleared");
 
 			dMonsDbg[currlevel][i][j] = dFlags[i][j] & BFLAG_VISIBLE;
@@ -98,7 +104,7 @@ void GiveGoldCheat()
 	int i, ni;
 
 	for (i = 0; i < NUM_INV_GRID_ELEM; i++) {
-		if (!plr[myplr].InvGrid[i]) {
+		if (plr[myplr].InvGrid[i] == 0) {
 			ni = plr[myplr]._pNumInv++;
 			SetPlrHandItem(&plr[myplr].InvList[ni], IDI_GOLD);
 			GetPlrHandSeed(&plr[myplr].InvList[ni]);
@@ -112,19 +118,21 @@ void GiveGoldCheat()
 
 void StoresCheat()
 {
+#ifndef HELLFIRE
 	int i;
 
 	numpremium = 0;
 
-	for (i = 0; i < 6; i++)
-		premiumitem[i]._itype = -1;
+	for (i = 0; i < SMITH_PREMIUM_ITEMS; i++)
+		premiumitem[i]._itype = ITYPE_NONE;
 
 	SpawnPremium(30);
 
 	for (i = 0; i < 20; i++)
-		witchitem[i]._itype = -1;
+		witchitem[i]._itype = ITYPE_NONE;
 
 	SpawnWitch(30);
+#endif
 }
 
 void TakeGoldCheat()
@@ -140,7 +148,7 @@ void TakeGoldCheat()
 
 	for (i = 0; i < MAXBELTITEMS; i++) {
 		if (plr[myplr].SpdList[i]._itype == ITYPE_GOLD)
-			plr[myplr].SpdList[i]._itype = -1;
+			plr[myplr].SpdList[i]._itype = ITYPE_NONE;
 	}
 
 	plr[myplr]._pGold = 0;
@@ -152,7 +160,7 @@ void MaxSpellsCheat()
 
 	for (i = 1; i < MAX_SPELLS; i++) {
 		if (spelldata[i].sBookLvl != -1) {
-			plr[myplr]._pMemSpells |= (__int64)1 << (i - 1);
+			plr[myplr]._pMemSpells |= SPELLBIT(i);
 			plr[myplr]._pSplLvl[i] = 10;
 		}
 	}
@@ -160,7 +168,7 @@ void MaxSpellsCheat()
 
 void SetSpellLevelCheat(char spl, int spllvl)
 {
-	plr[myplr]._pMemSpells |= (__int64)1 << (spl - 1);
+	plr[myplr]._pMemSpells |= SPELLBIT(spl);
 	plr[myplr]._pSplLvl[spl] = spllvl;
 }
 
@@ -205,7 +213,7 @@ void PrintDebugPlayer(BOOL bNextPlayer)
 		NetSendCmdString(1 << myplr, dstr);
 		sprintf(dstr, "  Lvl = %i : Change = %i", plr[dbgplr].plrlevel, plr[dbgplr]._pLvlChanging);
 		NetSendCmdString(1 << myplr, dstr);
-		sprintf(dstr, "  x = %i, y = %i : tx = %i, ty = %i", plr[dbgplr].WorldX, plr[dbgplr].WorldY, plr[dbgplr]._ptargx, plr[dbgplr]._ptargy);
+		sprintf(dstr, "  x = %i, y = %i : tx = %i, ty = %i", plr[dbgplr]._px, plr[dbgplr]._py, plr[dbgplr]._ptargx, plr[dbgplr]._ptargy);
 		NetSendCmdString(1 << myplr, dstr);
 		sprintf(dstr, "  mode = %i : daction = %i : walk[0] = %i", plr[dbgplr]._pmode, plr[dbgplr].destAction, plr[dbgplr].walkpath[0]);
 		NetSendCmdString(1 << myplr, dstr);
@@ -241,11 +249,11 @@ void PrintDebugMonster(int m)
 	sprintf(dstr, "Mode = %i, Var1 = %i", monster[m]._mmode, monster[m]._mVar1);
 	NetSendCmdString(1 << myplr, dstr);
 
-	bActive = 0;
+	bActive = FALSE;
 
 	for (i = 0; i < nummonsters; i++) {
 		if (monstactive[i] == m)
-			bActive = 1;
+			bActive = TRUE;
 	}
 
 	sprintf(dstr, "Active List = %i, Squelch = %i", bActive, monster[m]._msquelch);
@@ -259,7 +267,7 @@ void GetDebugMonster()
 	mi1 = pcursmonst;
 	if (mi1 == -1) {
 		mi2 = dMonster[cursmx][cursmy];
-		if (mi2) {
+		if (mi2 != 0) {
 			mi1 = mi2 - 1;
 			if (mi2 <= 0)
 				mi1 = -1 - mi2;
@@ -274,7 +282,8 @@ void NextDebugMonster()
 {
 	char dstr[128];
 
-	if (dbgmon++ == MAXMONSTERS)
+	dbgmon++;
+	if (dbgmon == MAXMONSTERS)
 		dbgmon = 0;
 
 	sprintf(dstr, "Current debug monster = %i", dbgmon);

@@ -1,4 +1,8 @@
-//HEADER_GOES_HERE
+/**
+ * @file scrollrt.h
+ *
+ * Interface of functionality for rendering the dungeons, monsters and calling other render routines.
+ */
 #ifndef __SCROLLRT_H__
 #define __SCROLLRT_H__
 
@@ -7,11 +11,11 @@ extern int PitchTbl[1024];
 extern BYTE *gpBufEnd;
 extern DWORD level_cel_block;
 extern char arch_draw_type;
-extern DDSURFACEDESC DDS_desc;
 extern int cel_transparency_active;
 extern int level_piece_id;
-extern void (*DrawPlrProc)(int, int, int, int, int, BYTE *, int, int, int, int);
-extern int draw_monster_num;
+#ifdef HELLFIRE
+extern BOOLEAN AutoMapShowItems;
+#endif
 
 void ClearCursor();
 void DrawMissile(int x, int y, int sx, int sy, int CelSkip, int CelCap, BOOL pre);
@@ -25,13 +29,5 @@ void EnableFrameCount();
 #endif
 void scrollrt_draw_game_screen(BOOL draw_cursor);
 void DrawAndBlit();
-
-/* rdata */
-
-/* data */
-
-/* used in 1.00 debug */
-extern char *szMonModeAssert[18];
-extern char *szPlrModeAssert[12];
 
 #endif /* __SCROLLRT_H__ */

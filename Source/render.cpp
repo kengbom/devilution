@@ -1,4 +1,9 @@
-#include "diablo.h"
+/**
+ * @file render.cpp
+ *
+ * Implementation of functionality for rendering the level tiles.
+ */
+#include "all.h"
 #include "_asm.cpp"
 
 int WorldBoolFlag = 0;
@@ -8,7 +13,8 @@ BYTE *gpCelFrame = NULL;
 DWORD *gpDrawMask = NULL;
 // char world_4B326D[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-DWORD RightMask[32] = {
+/** Specifies the draw masks used to render transparency of the right side of tiles. */
+DWORD RightMask[TILE_WIDTH] = {
 	0xEAAAAAAA, 0xF5555555,
 	0xFEAAAAAA, 0xFF555555,
 	0xFFEAAAAA, 0xFFF55555,
@@ -26,8 +32,8 @@ DWORD RightMask[32] = {
 	0xFFFFFFFF, 0xFFFFFFFF,
 	0xFFFFFFFF, 0xFFFFFFFF
 };
-
-DWORD LeftMask[32] = {
+/** Specifies the draw masks used to render transparency of the left side of tiles. */
+DWORD LeftMask[TILE_WIDTH] = {
 	0xAAAAAAAB, 0x5555555F,
 	0xAAAAAABF, 0x555555FF,
 	0xAAAAABFF, 0x55555FFF,
@@ -45,8 +51,8 @@ DWORD LeftMask[32] = {
 	0xFFFFFFFF, 0xFFFFFFFF,
 	0xFFFFFFFF, 0xFFFFFFFF
 };
-
-DWORD WallMask[32] = {
+/** Specifies the draw masks used to render transparency of wall tiles. */
+DWORD WallMask[TILE_WIDTH] = {
 	0xAAAAAAAA, 0x55555555,
 	0xAAAAAAAA, 0x55555555,
 	0xAAAAAAAA, 0x55555555,
@@ -84,7 +90,7 @@ int WorldTbl3x16[48] = {
 	60, 60, 60
 };
 
-// slope/angle tables, left and right
+/** slope/angle tables, left and right */
 int WorldTbl17_1[17] = { 0, 4, 8, 16, 24, 36, 48, 64, 80, 100, 120, 144, 168, 196, 224, 256, 288 };
 int WorldTbl17_2[17] = { 0, 32, 60, 88, 112, 136, 156, 176, 192, 208, 220, 232, 240, 248, 252, 256, 288 };
 
@@ -114,6 +120,11 @@ int WorldTbl17_2[17] = { 0, 32, 60, 88, 112, 136, 156, 176, 192, 208, 220, 232, 
 #ifdef USE_ASM
 #include "_render.cpp"
 #else
+/**
+ * While blitting this function will check for the upper bound of the buffer
+ * @brief Blit upper part of transparent world CELs
+ * @param pBuff Output buffer
+ */
 void drawTopArchesUpperScreen(BYTE *pBuff)
 {
 	BYTE *dst, *src;
@@ -1137,6 +1148,12 @@ void drawTopArchesUpperScreen(BYTE *pBuff)
 	}
 }
 
+/**
+ * While blitting this function will check for the upper bound of the buffer
+ * @brief Blit lower part of transparent world CELs
+ * @param pBuff Output buffer
+ * @param pMask Transparancy pattern
+ */
 void drawBottomArchesUpperScreen(BYTE *pBuff, DWORD *pMask)
 {
 	BYTE *dst, *src;
@@ -1152,7 +1169,7 @@ void drawBottomArchesUpperScreen(BYTE *pBuff, DWORD *pMask)
 	gpCelFrame = (BYTE *)SpeedFrameTbl;
 	dst = pBuff;
 	gpDrawMask = pMask;
-	if (!(BYTE)light_table_index) {
+	if ((BYTE)light_table_index == 0) {
 		if (level_cel_block & 0x8000)
 			level_cel_block = *(DWORD *)&gpCelFrame[64 * (level_cel_block & 0xFFF)]
 			    + (WORD)(level_cel_block & 0xF000);
@@ -1769,6 +1786,11 @@ void drawBottomArchesUpperScreen(BYTE *pBuff, DWORD *pMask)
 	}
 }
 
+/**
+ * While blitting this function will check for the upper bound of the buffer
+ * @brief Blit current world CEL to the given buffer
+ * @param pBuff Output buffer
+ */
 void drawUpperScreen(BYTE *pBuff)
 {
 	BYTE *dst, *src;
@@ -1800,7 +1822,7 @@ void drawUpperScreen(BYTE *pBuff)
 	}
 	gpCelFrame = (BYTE *)SpeedFrameTbl;
 	dst = pBuff;
-	if (!(BYTE)light_table_index) {
+	if ((BYTE)light_table_index == 0) {
 		if (level_cel_block & 0x8000)
 			level_cel_block = *(DWORD *)&gpCelFrame[64 * (level_cel_block & 0xFFF)]
 			    + (WORD)(level_cel_block & 0xF000);
@@ -2386,6 +2408,11 @@ void drawUpperScreen(BYTE *pBuff)
 	}
 }
 
+/**
+ * While blitting this function will check for the lower bound of the buffer
+ * @brief Blit upper part of transparent world CELs
+ * @param pBuff Output buffer
+ */
 void drawTopArchesLowerScreen(BYTE *pBuff)
 {
 	BYTE *dst, *src;
@@ -2403,7 +2430,7 @@ void drawTopArchesLowerScreen(BYTE *pBuff)
 
 	gpCelFrame = (BYTE *)SpeedFrameTbl;
 	dst = pBuff;
-	if (!(BYTE)light_table_index) {
+	if ((BYTE)light_table_index == 0) {
 		if (level_cel_block & 0x8000)
 			level_cel_block = *(DWORD *)&gpCelFrame[64 * (level_cel_block & 0xFFF)]
 			    + (WORD)(level_cel_block & 0xF000);
@@ -3622,6 +3649,12 @@ LABEL_11:
 	}
 }
 
+/**
+ * While blitting this function will check for the lower bound of the buffer
+ * @brief Blit lower part of transparent world CELs
+ * @param pBuff Output buffer
+ * @param pMask Transparancy pattern
+ */
 void drawBottomArchesLowerScreen(BYTE *pBuff, DWORD *pMask)
 {
 	BYTE *dst, *src;
@@ -4414,6 +4447,11 @@ void drawBottomArchesLowerScreen(BYTE *pBuff, DWORD *pMask)
 	}
 }
 
+/**
+ * While blitting this function will check for the lower bound of the buffer
+ * @brief Blit current world CEL to the given buffer
+ * @param pBuff Output buffer
+ */
 void drawLowerScreen(BYTE *pBuff)
 {
 	BYTE *dst, *src;

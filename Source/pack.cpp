@@ -1,9 +1,18 @@
-#include "diablo.h"
+/**
+ * @file pack.cpp
+ *
+ * Implementation of functions for minifying player data structure.
+ */
+#include "all.h"
 #include "../3rdParty/Storm/Source/storm.h"
 
-static void PackItem(PkItemStruct *id, ItemStruct *is)
+#ifndef HELLFIRE
+static
+#endif
+    void
+    PackItem(PkItemStruct *id, ItemStruct *is)
 {
-	if (is->_itype == -1) {
+	if (is->_itype == ITYPE_NONE) {
 		id->idx = 0xFFFF;
 	} else {
 		id->idx = is->IDidx;
@@ -15,7 +24,7 @@ static void PackItem(PkItemStruct *id, ItemStruct *is)
 			id->bMDur = is->_iName[15];
 			id->bCh = is->_iName[16];
 			id->bMCh = is->_iName[17];
-			id->wValue = is->_ivalue | (is->_iName[18] << 8) | ((is->_iCurs - 19) << 6);
+			id->wValue = is->_ivalue | (is->_iName[18] << 8) | ((is->_iCurs - ICURS_EAR_SORCEROR) << 6);
 			id->dwBuff = is->_iName[22] | ((is->_iName[21] | ((is->_iName[20] | (is->_iName[19] << 8)) << 8)) << 8);
 		} else {
 			id->iSeed = is->_iSeed;
@@ -44,8 +53,8 @@ void PackPlayer(PkPlayerStruct *pPack, int pnum, BOOL manashield)
 	pPack->destParam1 = pPlayer->destParam1;
 	pPack->destParam2 = pPlayer->destParam2;
 	pPack->plrlevel = pPlayer->plrlevel;
-	pPack->px = pPlayer->WorldX;
-	pPack->py = pPlayer->WorldY;
+	pPack->px = pPlayer->_px;
+	pPack->py = pPlayer->_py;
 	pPack->targx = pPlayer->_ptargx;
 	pPack->targy = pPlayer->_ptargy;
 	strcpy(pPack->pName, pPlayer->_pName);
@@ -64,11 +73,15 @@ void PackPlayer(PkPlayerStruct *pPack, int pnum, BOOL manashield)
 	pPack->pMaxManaBase = pPlayer->_pMaxManaBase;
 	pPack->pMemSpells = pPlayer->_pMemSpells;
 
-	for (i = 0; i < MAX_SPELLS; i++)
+	for (i = 0; i < 37; i++) // Should be MAX_SPELLS but set to 37 to make save games compatible
 		pPack->pSplLvl[i] = pPlayer->_pSplLvl[i];
+#ifdef HELLFIRE
+	for (i = 37; i < 47; i++)
+		pPack->pSplLvl2[i - 37] = pPlayer->_pSplLvl[i];
+#endif
 
-	pki = pPack->InvBody;
-	pi = pPlayer->InvBody;
+	pki = &pPack->InvBody[0];
+	pi = &pPlayer->InvBody[0];
 
 	for (i = 0; i < NUM_INVLOC; i++) {
 		PackItem(pki, pi);
@@ -76,8 +89,8 @@ void PackPlayer(PkPlayerStruct *pPack, int pnum, BOOL manashield)
 		pi++;
 	}
 
-	pki = pPack->InvList;
-	pi = pPlayer->InvList;
+	pki = &pPack->InvList[0];
+	pi = &pPlayer->InvList[0];
 
 	for (i = 0; i < NUM_INV_GRID_ELEM; i++) {
 		PackItem(pki, pi);
@@ -89,8 +102,8 @@ void PackPlayer(PkPlayerStruct *pPack, int pnum, BOOL manashield)
 		pPack->InvGrid[i] = pPlayer->InvGrid[i];
 
 	pPack->_pNumInv = pPlayer->_pNumInv;
-	pki = pPack->SpdList;
-	pi = pPlayer->SpdList;
+	pki = &pPack->SpdList[0];
+	pi = &pPlayer->SpdList[0];
 
 	for (i = 0; i < MAXBELTITEMS; i++) {
 		PackItem(pki, pi);
@@ -98,20 +111,37 @@ void PackPlayer(PkPlayerStruct *pPack, int pnum, BOOL manashield)
 		pi++;
 	}
 
+#ifdef HELLFIRE
+	pPack->wReflection = pPlayer->wReflection;
+	pPack->pDiabloKillLevel = pPlayer->pDiabloKillLevel;
+	pPack->pDifficulty = pPlayer->pDifficulty;
+	pPack->pDamAcFlags = pPlayer->pDamAcFlags;
+#else
 	pPack->pDiabloKillLevel = pPlayer->pDiabloKillLevel;
 
 	if (gbMaxPlayers == 1 || manashield)
 		pPack->pManaShield = pPlayer->pManaShield;
 	else
 		pPack->pManaShield = FALSE;
+#endif
 }
 
-// Note: last slot of item[MAXITEMS+1] used as temporary buffer
-// find real name reference below, possibly [sizeof(item[])/sizeof(ItemStruct)]
-static void UnPackItem(PkItemStruct *is, ItemStruct *id)
+/**
+ * Expand a PkItemStruct in to a ItemStruct
+ *
+ * Note: last slot of item[MAXITEMS+1] used as temporary buffer
+ * find real name reference below, possibly [sizeof(item[])/sizeof(ItemStruct)]
+ * @param is The source packed item
+ * @param id The distination item
+ */
+#ifndef HELLFIRE
+static
+#endif
+    void
+    UnPackItem(PkItemStruct *is, ItemStruct *id)
 {
 	if (is->idx == 0xFFFF) {
-		id->_itype = -1;
+		id->_itype = ITYPE_NONE;
 	} else {
 		if (is->idx == IDI_EAR) {
 			RecreateEar(
@@ -165,10 +195,10 @@ void UnPackPlayer(PkPlayerStruct *pPack, int pnum, BOOL killok)
 
 	pPlayer = &plr[pnum];
 	ClearPlrRVars(pPlayer);
-	pPlayer->WorldX = pPack->px;
-	pPlayer->WorldY = pPack->py;
 	pPlayer->_px = pPack->px;
 	pPlayer->_py = pPack->py;
+	pPlayer->_pfutx = pPack->px;
+	pPlayer->_pfuty = pPack->py;
 	pPlayer->_ptargx = pPack->targx;
 	pPlayer->_ptargy = pPack->targy;
 	pPlayer->plrlevel = pPack->plrlevel;
@@ -199,11 +229,19 @@ void UnPackPlayer(PkPlayerStruct *pPack, int pnum, BOOL killok)
 	pPlayer->_pManaBase = pPack->pManaBase;
 	pPlayer->_pMemSpells = pPack->pMemSpells;
 
+#ifdef HELLFIRE
+	for (i = 0; i <= 36; i++) // Should be MAX_SPELLS-1 but set to 36 to make save games compatible
+		pPlayer->_pSplLvl[i] = pPack->pSplLvl[i];
+	char *p = pPack->pSplLvl2;
+	for (i = 37; i < 47; i++)
+		pPlayer->_pSplLvl[i] = p[i - 37];
+#else
 	for (i = 0; i < MAX_SPELLS; i++)
 		pPlayer->_pSplLvl[i] = pPack->pSplLvl[i];
+#endif
 
-	pki = pPack->InvBody;
-	pi = pPlayer->InvBody;
+	pki = &pPack->InvBody[0];
+	pi = &pPlayer->InvBody[0];
 
 	for (i = 0; i < NUM_INVLOC; i++) {
 		UnPackItem(pki, pi);
@@ -211,8 +249,8 @@ void UnPackPlayer(PkPlayerStruct *pPack, int pnum, BOOL killok)
 		pi++;
 	}
 
-	pki = pPack->InvList;
-	pi = pPlayer->InvList;
+	pki = &pPack->InvList[0];
+	pi = &pPlayer->InvList[0];
 
 	for (i = 0; i < NUM_INV_GRID_ELEM; i++) {
 		UnPackItem(pki, pi);
@@ -226,8 +264,8 @@ void UnPackPlayer(PkPlayerStruct *pPack, int pnum, BOOL killok)
 	pPlayer->_pNumInv = pPack->_pNumInv;
 	VerifyGoldSeeds(pPlayer);
 
-	pki = pPack->SpdList;
-	pi = pPlayer->SpdList;
+	pki = &pPack->SpdList[0];
+	pi = &pPlayer->SpdList[0];
 
 	for (i = 0; i < MAXBELTITEMS; i++) {
 		UnPackItem(pki, pi);
@@ -237,14 +275,25 @@ void UnPackPlayer(PkPlayerStruct *pPack, int pnum, BOOL killok)
 
 	if (pnum == myplr) {
 		for (i = 0; i < 20; i++)
-			witchitem[i]._itype = -1;
+			witchitem[i]._itype = ITYPE_NONE;
 	}
 
 	CalcPlrInv(pnum, FALSE);
+#ifdef HELLFIRE
+	pPlayer->wReflection = pPack->wReflection;
+#endif
 	pPlayer->pTownWarps = 0;
 	pPlayer->pDungMsgs = 0;
+#ifdef HELLFIRE
+	pPlayer->pDungMsgs2 = 0;
+#endif
 	pPlayer->pLvlLoad = 0;
 	pPlayer->pDiabloKillLevel = pPack->pDiabloKillLevel;
+#ifdef HELLFIRE
+	pPlayer->pDifficulty = pPack->pDifficulty;
+	pPlayer->pDamAcFlags = pPack->pDamAcFlags;
+#else
 	pPlayer->pBattleNet = pPack->pBattleNet;
 	pPlayer->pManaShield = pPack->pManaShield;
+#endif
 }

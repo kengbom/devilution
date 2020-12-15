@@ -373,3 +373,10 @@ ASALocalRun/
 *.pubxml.user
 
 # End of https://www.gitignore.io/api/visualstudio
+/docs/html/
+
+# MPQ files
+*.mpq
+
+# ddraw wrapper configuration file
+ddraw_settings.ini
