@@ -120,14 +120,14 @@ void (*AiProc[])(int i) = {
 	&MAI_Lachdanan,
 	&MAI_Warlord,
 #ifdef HELLFIRE
-	&mai_ranged_441680,
-	&mai_ranged_44168B,
-	&mai_horkdemon,
-	&mai_ranged_441649,
-	&mai_ranged_441654,
-	&mai_ranged_44165F,
-	&mai_ranged_44166A,
-	&mai_roundranged_441EA0
+	&MAI_Firebat,
+	&MAI_Torchant,
+	&MAI_HorkDemon,
+	&MAI_Lich,
+	&MAI_ArchLich,
+	&MAI_Psychorb,
+	&MAI_Necromorb,
+	&MAI_BoneDemon
 #endif
 };
 
@@ -657,7 +657,7 @@ void monster_some_crypt()
 	if (currlevel == 24 && UberDiabloMonsterIndex >= 0 && UberDiabloMonsterIndex < nummonsters) {
 		mon = &monster[UberDiabloMonsterIndex];
 		PlayEffect(UberDiabloMonsterIndex, 2);
-		quests[Q_NAKRUL]._qlog = 0;
+		quests[Q_NAKRUL]._qlog = FALSE;
 		mon->mArmorClass -= 50;
 		hp = mon->_mmaxhp / 2;
 		mon->mMagicRes = 0;
@@ -703,7 +703,7 @@ void PlaceUniqueMonst(int uniqindex, int miniontype, int bosspacksize)
 
 	Monst = &monster[nummonsters];
 	count = 0;
-	Uniq = UniqMonst + uniqindex;
+	Uniq = &UniqMonst[uniqindex];
 
 	if ((uniquetrans + 19) << 8 >= LIGHTSIZE) {
 		return;
@@ -1283,7 +1283,7 @@ int AddMonster(int x, int y, int dir, int mtype, BOOL InMap)
 }
 
 #ifdef HELLFIRE
-void monster_43C785(int i)
+void AddDoppelganger(int i)
 {
 	int x, y, d, j, oi, dir, mx, my;
 
@@ -1352,7 +1352,7 @@ void M_Enemy(int i)
 	int mi, pnum;
 	int dist, best_dist;
 	int _menemy;
-	BOOL sameroom, bestsameroom;
+	DIABOOL sameroom, bestsameroom;
 	MonsterStruct *Monst;
 	BYTE enemyx, enemyy;
 
@@ -1360,14 +1360,28 @@ void M_Enemy(int i)
 	best_dist = -1;
 	bestsameroom = 0;
 	Monst = &monster[i];
-	if (!(Monst->_mFlags & MFLAG_GOLEM)) {
+	if (
+#ifdef HELLFIRE
+	    Monst->_mFlags & MFLAG_BERSERK ||
+#endif
+	    !(Monst->_mFlags & MFLAG_GOLEM)) {
 		for (pnum = 0; pnum < MAX_PLRS; pnum++) {
-			if (!plr[pnum].plractive || currlevel != plr[pnum].plrlevel || plr[pnum]._pLvlChanging || (plr[pnum]._pHitPoints == 0 && gbMaxPlayers != 1))
+			if (!plr[pnum].plractive || currlevel != plr[pnum].plrlevel || plr[pnum]._pLvlChanging
+#ifdef HELLFIRE
+			    || ((plr[pnum]._pHitPoints >> 6) == 0)
+#else
+			    || (plr[pnum]._pHitPoints == 0 && gbMaxPlayers != 1)
+#endif
+			)
 				continue;
+#ifdef HELLFIRE
+			sameroom = (dTransVal[Monst->_mx][Monst->_my] == dTransVal[plr[pnum]._px][plr[pnum]._py]);
+#else
 			if (dTransVal[Monst->_mx][Monst->_my] == dTransVal[plr[pnum]._px][plr[pnum]._py])
 				sameroom = TRUE;
 			else
 				sameroom = FALSE;
+#endif
 			if (abs(Monst->_mx - plr[pnum]._px) > abs(Monst->_my - plr[pnum]._py))
 				dist = Monst->_mx - plr[pnum]._px;
 			else
@@ -1389,13 +1403,25 @@ void M_Enemy(int i)
 		mi = monstactive[j];
 		if (mi == i)
 			continue;
+#ifdef HELLFIRE
+		if (!((monster[mi]._mhitpoints >> 6) > 0))
+			continue;
+#endif
 		if (monster[mi]._mx == 1 && monster[mi]._my == 0)
 			continue;
 		if (M_Talker(mi) && monster[mi].mtalkmsg)
 			continue;
-		if (!(Monst->_mFlags & MFLAG_GOLEM)
-		    && ((abs(monster[mi]._mx - Monst->_mx) >= 2 || abs(monster[mi]._my - Monst->_my) >= 2) && !M_Ranged(i)
-		        || (!(Monst->_mFlags & MFLAG_GOLEM) && !(monster[mi]._mFlags & MFLAG_GOLEM)))) {
+		if ((!(Monst->_mFlags & MFLAG_GOLEM)
+#ifdef HELLFIRE
+		        && !(Monst->_mFlags & MFLAG_BERSERK)
+#endif
+		        && (abs(monster[mi]._mx - Monst->_mx) >= 2 || abs(monster[mi]._my - Monst->_my) >= 2)
+		        && !M_Ranged(i))
+		    || (!(Monst->_mFlags & MFLAG_GOLEM)
+#ifdef HELLFIRE
+		        && !(Monst->_mFlags & MFLAG_BERSERK)
+#endif
+		        && !(monster[mi]._mFlags & MFLAG_GOLEM))) {
 			continue;
 		}
 		sameroom = dTransVal[Monst->_mx][Monst->_my] == dTransVal[monster[mi]._mx][monster[mi]._my];
@@ -1751,21 +1777,33 @@ void M_StartHit(int i, int pnum, int dam)
 		monster[i].mWhoHit |= 1 << pnum;
 	if (pnum == myplr) {
 		delta_monster_hp(i, monster[i]._mhitpoints, currlevel);
+#ifdef HELLFIRE
+		NetSendCmdMonDmg(FALSE, i, dam);
+#else
 		NetSendCmdParam2(FALSE, CMD_MONSTDAMAGE, i, dam);
+#endif
 	}
 	PlayEffect(i, 1);
 	if (monster[i].MType->mtype >= MT_SNEAK && monster[i].MType->mtype <= MT_ILLWEAV || dam >> 6 >= monster[i].mLevel + 3) {
 		if (pnum >= 0) {
-			monster[i]._mFlags &= ~MFLAG_TARGETS_MONSTER;
 			monster[i]._menemy = pnum;
 			monster[i]._menemyx = plr[pnum]._pfutx;
 			monster[i]._menemyy = plr[pnum]._pfuty;
+			monster[i]._mFlags &= ~MFLAG_TARGETS_MONSTER;
 			monster[i]._mdir = M_GetDir(i);
 		}
 		if (monster[i].MType->mtype == MT_BLINK) {
 			M_Teleport(i);
-		} else if (monster[i].MType->mtype >= MT_NSCAV && monster[i].MType->mtype <= MT_YSCAV) {
+		} else if ((monster[i].MType->mtype >= MT_NSCAV && monster[i].MType->mtype <= MT_YSCAV)
+#ifdef HELLFIRE
+		    || monster[i].MType->mtype == MT_GRAVEDIG
+#endif
+		) {
 			monster[i]._mgoal = MGOAL_NORMAL;
+#ifdef HELLFIRE
+			monster[i]._mgoalvar1 = 0;
+			monster[i]._mgoalvar2 = 0;
+#endif
 		}
 		if (monster[i]._mmode != MM_STONE) {
 			NewMonsterAnim(i, monster[i].MType->Anims[MA_GOTHIT], monster[i]._mdir);
@@ -1776,6 +1814,8 @@ void M_StartHit(int i, int pnum, int dam)
 			monster[i]._my = monster[i]._moldy;
 			monster[i]._mfutx = monster[i]._moldx;
 			monster[i]._mfuty = monster[i]._moldy;
+			monster[i]._moldx = monster[i]._mx;
+			monster[i]._moldy = monster[i]._my;
 			M_CheckEFlag(i);
 			M_ClearSquares(i);
 			dMonster[monster[i]._mx][monster[i]._my] = i + 1;
@@ -1847,7 +1887,7 @@ void SpawnLoot(int i, BOOL sendmsg)
 	} else if (Monst->mName == UniqMonst[UMT_DEFILER].mName) {
 		if (effect_is_playing(USFX_DEFILER8))
 			stream_stop();
-		quests[Q_DEFILER]._qlog = 0;
+		quests[Q_DEFILER]._qlog = FALSE;
 		SpawnMapOfDoom(Monst->_mx, Monst->_my);
 	} else if (Monst->mName == UniqMonst[UMT_HORKDMN].mName) {
 		if (UseTheoQuest) {
@@ -1862,13 +1902,13 @@ void SpawnLoot(int i, BOOL sendmsg)
 			nSFX = USFX_NAKRUL6;
 		if (effect_is_playing(nSFX))
 			stream_stop();
-		quests[Q_NAKRUL]._qlog = 0;
+		quests[Q_NAKRUL]._qlog = FALSE;
 		UberDiabloMonsterIndex = -2;
 		CreateMagicWeapon(Monst->_mx, Monst->_my, ITYPE_SWORD, ICURS_GREAT_SWORD, FALSE, TRUE);
 		CreateMagicWeapon(Monst->_mx, Monst->_my, ITYPE_STAFF, ICURS_WAR_STAFF, FALSE, TRUE);
 		CreateMagicWeapon(Monst->_mx, Monst->_my, ITYPE_BOW, ICURS_LONG_WAR_BOW, FALSE, TRUE);
 		CreateSpellBook(Monst->_mx, Monst->_my, SPL_APOCA, FALSE, TRUE);
-	} else if (i > 3) {
+	} else if (i > MAX_PLRS - 1) { // Golems should not spawn loot
 		SpawnItem(i, Monst->_mx, Monst->_my, sendmsg);
 	}
 }
@@ -1877,18 +1917,30 @@ void SpawnLoot(int i, BOOL sendmsg)
 void M2MStartHit(int mid, int i, int dam)
 {
 	if ((DWORD)mid >= MAXMONSTERS) {
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("Invalid monster %d getting hit by monster", mid);
+#endif
 	}
 
 	if (monster[mid].MType == NULL) {
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("Monster %d \"%s\" getting hit by monster: MType NULL", mid, monster[mid].mName);
+#endif
 	}
 
-	if (i >= 0)
-		monster[i].mWhoHit |= 1 << i;
+	if (i >= 0) // BUGFIX: Missing check for golems `&& i <= MAX_PLRS`
+		monster[i].mWhoHit |= 1 << i; // BUGFIX Should be monster[mid].mWhoHit
 
 	delta_monster_hp(mid, monster[mid]._mhitpoints, currlevel);
+#ifdef HELLFIRE
+	NetSendCmdMonDmg(FALSE, mid, dam);
+#else
 	NetSendCmdParam2(FALSE, CMD_MONSTDAMAGE, mid, dam);
+#endif
 	PlayEffect(mid, 1);
 
 	if (monster[mid].MType->mtype >= MT_SNEAK && monster[mid].MType->mtype <= MT_ILLWEAV || dam >> 6 >= monster[mid].mLevel + 3) {
@@ -1897,8 +1949,16 @@ void M2MStartHit(int mid, int i, int dam)
 
 		if (monster[mid].MType->mtype == MT_BLINK) {
 			M_Teleport(mid);
-		} else if (monster[mid].MType->mtype >= MT_NSCAV && monster[mid].MType->mtype <= MT_YSCAV) {
+		} else if (monster[mid].MType->mtype >= MT_NSCAV && monster[mid].MType->mtype <= MT_YSCAV
+#ifdef HELLFIRE
+		    || monster[mid].MType->mtype == MT_GRAVEDIG
+#endif
+		) {
 			monster[mid]._mgoal = MGOAL_NORMAL;
+#ifdef HELLFIRE
+			monster[mid]._mgoalvar1 = 0;
+			monster[mid]._mgoalvar2 = 0;
+#endif
 		}
 
 		if (monster[mid]._mmode != MM_STONE) {
@@ -1913,6 +1973,8 @@ void M2MStartHit(int mid, int i, int dam)
 			monster[mid]._my = monster[mid]._moldy;
 			monster[mid]._mfutx = monster[mid]._moldx;
 			monster[mid]._mfuty = monster[mid]._moldy;
+			monster[mid]._moldx = monster[mid]._mx;
+			monster[mid]._moldy = monster[mid]._my;
 			M_CheckEFlag(mid);
 			M_ClearSquares(mid);
 			dMonster[monster[mid]._mx][monster[mid]._my] = mid + 1;
@@ -1932,7 +1994,7 @@ void MonstStartKill(int i, int pnum, BOOL sendmsg)
 		app_fatal("MonstStartKill: Invalid monster %d", i);
 #endif
 	}
-	if (!monster[i].MType) {
+	if (monster[i].MType == NULL) {
 #ifdef HELLFIRE
 		return;
 #else
@@ -1997,13 +2059,26 @@ void M2MStartKill(int i, int mid)
 	int md;
 
 	if ((DWORD)i >= MAXMONSTERS) {
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("M2MStartKill: Invalid monster (attacker) %d", i);
+#endif
 	}
+#ifdef HELLFIRE
+	if ((DWORD)mid >= MAXMONSTERS) {
+		return;
+#else
 	if ((DWORD)i >= MAXMONSTERS) { /// BUGFIX: should check `mid`
 		app_fatal("M2MStartKill: Invalid monster (killed) %d", mid);
+#endif
 	}
-	if (!monster[i].MType)
+	if (monster[i].MType == NULL) /// BUGFIX: should check `mid`
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("M2MStartKill: Monster %d \"%s\" MType NULL", mid, monster[mid].mName);
+#endif
 
 	delta_kill_monster(mid, monster[mid]._mx, monster[mid]._my, currlevel);
 	NetSendCmdLocParam1(FALSE, CMD_MONSTDEATH, monster[mid]._mx, monster[mid]._my, mid);
@@ -2016,14 +2091,20 @@ void M2MStartKill(int i, int mid)
 	monster[mid]._mhitpoints = 0;
 	SetRndSeed(monster[mid]._mRndSeed);
 
-	if (mid >= MAX_PLRS)
+#ifdef HELLFIRE
+	SpawnLoot(mid, TRUE);
+#else
+	if (mid >= MAX_PLRS) // Golems should not spawn loot
 		SpawnItem(mid, monster[mid]._mx, monster[mid]._my, TRUE);
+#endif
 
 	if (monster[mid].MType->mtype == MT_DIABLO)
 		M_DiabloDeath(mid, TRUE);
 	else
+#ifndef HELLFIRE
 		PlayEffect(i, 2);
 
+#endif
 	PlayEffect(mid, 2);
 
 	md = (monster[i]._mdir - 4) & 7;
@@ -2037,8 +2118,10 @@ void M2MStartKill(int i, int mid)
 	monster[mid]._myoff = 0;
 	monster[mid]._mx = monster[mid]._moldx;
 	monster[mid]._my = monster[mid]._moldy;
-	monster[mid]._mfutx = monster[mid]._moldx;
-	monster[mid]._mfuty = monster[mid]._moldy;
+	monster[mid]._mfutx = monster[mid]._mx;
+	monster[mid]._mfuty = monster[mid]._my;
+	monster[mid]._moldx = monster[mid]._mx;
+	monster[mid]._moldy = monster[mid]._my;
 	M_CheckEFlag(mid);
 	M_ClearSquares(mid);
 	dMonster[monster[mid]._mx][monster[mid]._my] = mid + 1;
@@ -2046,6 +2129,10 @@ void M2MStartKill(int i, int mid)
 	M_FallenFear(monster[mid]._mx, monster[mid]._my);
 	if (monster[mid].MType->mtype >= MT_NACID && monster[mid].MType->mtype <= MT_XACID)
 		AddMissile(monster[mid]._mx, monster[mid]._my, 0, 0, 0, MIS_ACIDPUD, TARGET_PLAYERS, mid, monster[mid]._mint + 1, 0);
+
+#ifdef HELLFIRE
+	M_StartStand(i, monster[i]._mdir);
+#endif
 }
 
 void M_StartKill(int i, int pnum)
@@ -2222,7 +2309,7 @@ void M_ChangeLightOffset(int monst)
 
 	_myoff *= (ly >> 3);
 #ifdef HELLFIRE
-	if (monster[monst].mlid)
+	if (monster[monst].mlid != 0)
 #endif
 		ChangeLightOff(monster[monst].mlid, _mxoff, _myoff);
 }
@@ -2233,13 +2320,13 @@ BOOL M_DoStand(int i)
 
 	if ((DWORD)i >= MAXMONSTERS)
 #ifdef HELLFIRE
-		return 0;
+		return FALSE;
 #else
 		app_fatal("M_DoStand: Invalid monster %d", i);
 #endif
 	if (monster[i].MType == NULL)
 #ifdef HELLFIRE
-		return 0;
+		return FALSE;
 #else
 		app_fatal("M_DoStand: Monster %d \"%s\" MType NULL", i, monster[i].mName);
 #endif
@@ -2424,10 +2511,18 @@ void M_TryM2MHit(int i, int mid, int hper, int mind, int maxd)
 	BOOL ret;
 
 	if ((DWORD)mid >= MAXMONSTERS) {
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("M_TryM2MHit: Invalid monster %d", mid);
+#endif
 	}
 	if (monster[mid].MType == NULL)
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("M_TryM2MHit: Monster %d \"%s\" MType NULL", mid, monster[mid].mName);
+#endif
 	if (monster[mid]._mhitpoints >> 6 > 0 && (monster[mid].MType->mtype != MT_ILLWEAV || monster[mid]._mgoal != MGOAL_RETREAT)) {
 		int hit = random_(4, 100);
 		if (monster[mid]._mmode == MM_STONE)
@@ -2461,12 +2556,20 @@ void M_TryH2HHit(int i, int pnum, int Hit, int MinDam, int MaxDam)
 	int blk, blkper;
 	int dam, mdam;
 	int newx, newy;
-	int j, misnum, ms_num, cur_ms_num, new_hp;
+	int j, misnum, ms_num, cur_ms_num, new_hp, dir, ac;
 
 	if ((DWORD)i >= MAXMONSTERS)
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("M_TryH2HHit: Invalid monster %d", i);
+#endif
 	if (monster[i].MType == NULL)
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("M_TryH2HHit: Monster %d \"%s\" MType NULL", i, monster[i].mName);
+#endif
 	if (monster[i]._mFlags & MFLAG_TARGETS_MONSTER) {
 		M_TryM2MHit(i, pnum, Hit, MinDam, MaxDam);
 		return;
@@ -2483,11 +2586,17 @@ void M_TryH2HHit(int i, int pnum, int Hit, int MinDam, int MaxDam)
 	if (debug_mode_dollar_sign || debug_mode_key_inverted_v)
 		hper = 1000;
 #endif
+	ac = plr[pnum]._pIBonusAC + plr[pnum]._pIAC;
+#ifdef HELLFIRE
+	if (plr[pnum].pDamAcFlags & ISPLHF_ACDEMON && monster[i].MData->mMonstClass == MC_DEMON)
+		ac += 40;
+	if (plr[pnum].pDamAcFlags & ISPLHF_ACUNDEAD && monster[i].MData->mMonstClass == MC_UNDEAD)
+		ac += 20;
+#endif
 	hit = Hit
 	    + 2 * (monster[i].mLevel - plr[pnum]._pLevel)
 	    + 30
-	    - plr[pnum]._pIBonusAC
-	    - plr[pnum]._pIAC
+	    - ac
 	    - plr[pnum]._pDexterity / 5;
 	if (hit < 15)
 		hit = 15;
@@ -2513,7 +2622,26 @@ void M_TryH2HHit(int i, int pnum, int Hit, int MinDam, int MaxDam)
 	if (hper >= hit)
 		return;
 	if (blkper < blk) {
-		StartPlrBlock(pnum, GetDirection(plr[pnum]._px, plr[pnum]._py, monster[i]._mx, monster[i]._my));
+		dir = GetDirection(plr[pnum]._px, plr[pnum]._py, monster[i]._mx, monster[i]._my);
+		StartPlrBlock(pnum, dir);
+#ifdef HELLFIRE
+		if (pnum == myplr && plr[pnum].wReflections > 0) {
+			plr[pnum].wReflections--;
+			dam = random_(99, (MaxDam - MinDam + 1) << 6) + (MinDam << 6);
+			dam += plr[pnum]._pIGetHit << 6;
+			if (dam < 64)
+				dam = 64;
+			mdam = dam * (0.01 * (random_(100, 10) + 20));
+			monster[i]._mhitpoints -= mdam;
+			dam -= mdam;
+			if (dam < 0)
+				dam = 0;
+			if (monster[i]._mhitpoints >> 6 <= 0)
+				M_StartKill(i, pnum);
+			else
+				M_StartHit(i, pnum, mdam);
+		}
+#endif
 		return;
 	}
 	if (monster[i].MType->mtype == MT_YZOMBIE && pnum == myplr) {
@@ -2529,20 +2657,21 @@ void M_TryH2HHit(int i, int pnum, int Hit, int MinDam, int MaxDam)
 				ms_num = misnum;
 		}
 		if (plr[pnum]._pMaxHP > 64) {
-			if (plr[pnum]._pMaxHPBase > 64) {
-				new_hp = plr[pnum]._pMaxHP - 64;
-				plr[pnum]._pMaxHP = new_hp;
-				if (plr[pnum]._pHitPoints > new_hp) {
-					plr[pnum]._pHitPoints = new_hp;
+#ifndef HELLFIRE
+			if (plr[pnum]._pMaxHPBase > 64)
+#endif
+			{
+				plr[pnum]._pMaxHP -= 64;
+				if (plr[pnum]._pHitPoints > plr[pnum]._pMaxHP) {
+					plr[pnum]._pHitPoints = plr[pnum]._pMaxHP;
 					if (cur_ms_num >= 0)
-						missile[cur_ms_num]._miVar1 = new_hp;
+						missile[cur_ms_num]._miVar1 = plr[pnum]._pHitPoints;
 				}
-				new_hp = plr[pnum]._pMaxHPBase - 64;
-				plr[pnum]._pMaxHPBase = new_hp;
-				if (plr[pnum]._pHPBase > new_hp) {
-					plr[pnum]._pHPBase = new_hp;
+				plr[pnum]._pMaxHPBase -= 64;
+				if (plr[pnum]._pHPBase > plr[pnum]._pMaxHPBase) {
+					plr[pnum]._pHPBase = plr[pnum]._pMaxHPBase;
 					if (cur_ms_num >= 0)
-						missile[cur_ms_num]._miVar2 = new_hp;
+						missile[cur_ms_num]._miVar2 = plr[pnum]._pHPBase;
 				}
 			}
 		}
@@ -2552,6 +2681,20 @@ void M_TryH2HHit(int i, int pnum, int Hit, int MinDam, int MaxDam)
 	if (dam < 64)
 		dam = 64;
 	if (pnum == myplr) {
+#ifdef HELLFIRE
+		if (plr[pnum].wReflections > 0) {
+			plr[pnum].wReflections--;
+			mdam = dam * (0.01 * (random_(100, 10) + 20));
+			monster[i]._mhitpoints -= mdam;
+			dam -= mdam;
+			if (dam < 0)
+				dam = 0;
+			if (monster[i]._mhitpoints >> 6 <= 0)
+				M_StartKill(i, pnum);
+			else
+				M_StartHit(i, pnum, mdam);
+		}
+#endif
 		plr[pnum]._pHitPoints -= dam;
 		plr[pnum]._pHPBase -= dam;
 	}
@@ -2571,6 +2714,9 @@ void M_TryH2HHit(int i, int pnum, int Hit, int MinDam, int MaxDam)
 	}
 	if (plr[pnum]._pHitPoints >> 6 <= 0) {
 		SyncPlrKill(pnum, 0);
+#ifdef HELLFIRE
+		M_StartStand(i, monster[i]._mdir);
+#endif
 		return;
 	}
 	StartPlrHit(pnum, dam, FALSE);
@@ -2736,7 +2882,7 @@ BOOL M_DoRSpAttack(int i)
 		    monster[i]._mVar3,
 		    0);
 #ifdef HELLFIRE
-		if (Monsters[i].Snds[3][0] != 0)
+		if (Monsters[i].Snds[3][0] != 0) // BUGFIX `Monsters[i].` should be `monster[i].MType->`
 #endif
 			PlayEffect(i, 3);
 	}
@@ -3400,7 +3546,7 @@ BOOL M_CallWalk2(int i, int md)
 	int mdtemp;
 
 	mdtemp = md;
-	ok = DirOK(i, md);     // Can we continue in the same direction
+	ok = DirOK(i, md);          // Can we continue in the same direction
 	if (random_(101, 2) != 0) { // Randomly go left or right
 		ok = ok || (mdtemp = left[md], DirOK(i, left[md])) || (mdtemp = right[md], DirOK(i, right[md]));
 	} else {
@@ -3979,7 +4125,7 @@ void MAI_Fallen(int i)
 	MonsterStruct *Monst;
 
 	if ((DWORD)i >= MAXMONSTERS) {
-#if HELLFIRE
+#ifdef HELLFIRE
 		return;
 #else
 		app_fatal("MAI_Fallen: Invalid monster %d", i);
@@ -4209,22 +4355,22 @@ void MAI_Succ(int i)
 }
 
 #ifdef HELLFIRE
-void mai_ranged_441649(int i)
+void MAI_Lich(int i)
 {
 	MAI_Ranged(i, MIS_LICH, FALSE);
 }
 
-void mai_ranged_441654(int i)
+void MAI_ArchLich(int i)
 {
 	MAI_Ranged(i, MIS_ARCHLICH, FALSE);
 }
 
-void mai_ranged_44165F(int i)
+void MAI_Psychorb(int i)
 {
 	MAI_Ranged(i, MIS_PSYCHORB, FALSE);
 }
 
-void mai_ranged_44166A(int i)
+void MAI_Necromorb(int i)
 {
 	MAI_Ranged(i, MIS_NECROMORB, FALSE);
 }
@@ -4236,12 +4382,12 @@ void MAI_AcidUniq(int i)
 }
 
 #ifdef HELLFIRE
-void mai_ranged_441680(int i)
+void MAI_Firebat(int i)
 {
 	MAI_Ranged(i, MIS_FIREBOLT, FALSE);
 }
 
-void mai_ranged_44168B(int i)
+void MAI_Torchant(int i)
 {
 	MAI_Ranged(i, MIS_FIREBALL, FALSE);
 }
@@ -4251,7 +4397,6 @@ void MAI_Scav(int i)
 {
 	BOOL done;
 	int x, y;
-	int _mx, _my;
 	MonsterStruct *Monst;
 
 	if ((DWORD)i >= MAXMONSTERS)
@@ -4261,8 +4406,6 @@ void MAI_Scav(int i)
 		app_fatal("MAI_Scav: Invalid monster %d", i);
 #endif
 	Monst = &monster[i];
-	_mx = Monst->_mx;
-	_my = Monst->_my;
 	done = FALSE;
 	if (monster[i]._mmode != MM_STAND)
 		return;
@@ -4278,9 +4421,25 @@ void MAI_Scav(int i)
 		Monst->_mgoalvar3--;
 		if (dDead[Monst->_mx][Monst->_my] != 0) {
 			M_StartEat(i);
-			if (!(Monst->_mFlags & MFLAG_NOHEAL))
+			if (!(Monst->_mFlags & MFLAG_NOHEAL)) {
+#ifdef HELLFIRE
+				int mMaxHP = Monst->MType->mMaxHP << 6; // BUGFIX use _mmaxhp or we loose health when difficulty isn't normal
+				if (gbMaxPlayers == 1)
+					mMaxHP >>= 1;
+				Monst->_mhitpoints += mMaxHP >> 3;
+				if (Monst->_mhitpoints > mMaxHP)
+					Monst->_mhitpoints = mMaxHP;
+				if (Monst->_mmaxhp < Monst->_mhitpoints)
+					Monst->_mmaxhp = Monst->_mhitpoints;
+				if (Monst->_mgoalvar3 <= 0 || Monst->_mhitpoints == mMaxHP)
+					dDead[Monst->_mx][Monst->_my] = 0;
+			}
+			if (Monst->_mhitpoints == Monst->_mmaxhp) {
+#else
 				Monst->_mhitpoints += 64;
+			}
 			if (Monst->_mhitpoints >= (Monst->_mmaxhp >> 1) + (Monst->_mmaxhp >> 2)) {
+#endif
 				Monst->_mgoal = MGOAL_NORMAL;
 				Monst->_mgoalvar1 = 0;
 				Monst->_mgoalvar2 = 0;
@@ -4335,7 +4494,11 @@ void MAI_Scav(int i)
 			}
 		}
 	}
+#ifdef HELLFIRE
+	else
+#else
 	if (Monst->_mmode == MM_STAND)
+#endif
 		MAI_SkelSd(i);
 }
 
@@ -4345,7 +4508,11 @@ void MAI_Garg(int i)
 	int mx, my, dx, dy, md;
 
 	if ((DWORD)i >= MAXMONSTERS)
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("MAI_Garg: Invalid monster %d", i);
+#endif
 
 	Monst = &monster[i];
 	dx = Monst->_mx - Monst->_lastx;
@@ -4365,8 +4532,11 @@ void MAI_Garg(int i)
 		return;
 	}
 
-	if (Monst->_mhitpoints < (Monst->_mmaxhp >> 1) && !(Monst->_mFlags & MFLAG_NOHEAL))
-		Monst->_mgoal = MGOAL_RETREAT;
+	if (Monst->_mhitpoints < (Monst->_mmaxhp >> 1))
+#ifndef HELLFIRE
+		if (!(Monst->_mFlags & MFLAG_NOHEAL))
+#endif
+			Monst->_mgoal = MGOAL_RETREAT;
 	if (Monst->_mgoal == MGOAL_RETREAT) {
 		if (abs(dx) >= Monst->_mint + 2 || abs(dy) >= Monst->_mint + 2) {
 			Monst->_mgoal = MGOAL_NORMAL;
@@ -4458,7 +4628,7 @@ void MAI_Storm(int i)
 }
 
 #ifdef HELLFIRE
-void mai_roundranged_441EA0(int i)
+void MAI_BoneDemon(int i)
 {
 	MAI_RoundRanged(i, MIS_BONEDEMON, TRUE, 4, 0);
 }
@@ -4481,7 +4651,11 @@ void MAI_RR2(int i, int mistype, int dam)
 	int dist, v, md;
 
 	if ((DWORD)i >= MAXMONSTERS)
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("MAI_RR2: Invalid monster %d", i);
+#endif
 
 	Monst = &monster[i];
 	mx = Monst->_mx - Monst->_menemyx;
@@ -4562,7 +4736,11 @@ void MAI_Golum(int i)
 	BOOL have_enemy, ok;
 
 	if ((DWORD)i >= MAXMONSTERS)
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("MAI_Golum: Invalid monster %d", i);
+#endif
 
 	Monst = &monster[i];
 	if (Monst->_mx == 1 && Monst->_my == 0) {
@@ -4592,10 +4770,7 @@ void MAI_Golum(int i)
 	_mey = my - monster[_menemy]._mfuty;
 	md = GetDirection(mx, my, monster[_menemy]._mx, monster[_menemy]._my);
 	monster[i]._mdir = md;
-	if (abs(_mex) >= 2 || abs(_mey) >= 2) {
-		if (have_enemy && MAI_Path(i))
-			return;
-	} else if (have_enemy) {
+	if (abs(_mex) < 2 && abs(_mey) < 2 && have_enemy) {
 		_menemy = monster[i]._menemy;
 		monster[i]._menemyx = monster[_menemy]._mx;
 		monster[i]._menemyy = monster[_menemy]._my;
@@ -4615,22 +4790,24 @@ void MAI_Golum(int i)
 		return;
 	}
 
+	if (have_enemy && MAI_Path(i))
+		return;
+
 	monster[i]._pathcount++;
 	if (monster[i]._pathcount > 8)
 		monster[i]._pathcount = 5;
 
 	ok = M_CallWalk(i, plr[i]._pdir);
-	if (!ok) {
-		md = (md - 1) & 7;
-		for (j = 0; j < 8 && !ok; j++) {
-			md = (md + 1) & 7;
-			ok = DirOK(i, md);
-		}
-		if (!ok) {
-			return;
-		}
-		M_WalkDir(i, md);
+	if (ok)
+		return;
+
+	md = (md - 1) & 7;
+	for (j = 0; j < 8 && !ok; j++) {
+		md = (md + 1) & 7;
+		ok = DirOK(i, md);
 	}
+	if (ok)
+		M_WalkDir(i, md);
 }
 
 void MAI_SkelKing(int i)
@@ -4640,7 +4817,11 @@ void MAI_SkelKing(int i)
 	int dist, v, md;
 
 	if ((DWORD)i >= MAXMONSTERS)
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("MAI_SkelKing: Invalid monster %d", i);
+#endif
 	Monst = &monster[i];
 	if (Monst->_mmode == MM_STAND && Monst->_msquelch != 0) {
 		fx = Monst->_menemyx;
@@ -4708,7 +4889,11 @@ void MAI_Rhino(int i)
 	int v, dist, md;
 
 	if ((DWORD)i >= MAXMONSTERS)
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("MAI_Rhino: Invalid monster %d", i);
+#endif
 	Monst = &monster[i];
 	if (Monst->_mmode == MM_STAND && Monst->_msquelch != 0) {
 		fx = Monst->_menemyx;
@@ -4746,8 +4931,8 @@ void MAI_Rhino(int i)
 				if (AddMissile(Monst->_mx, Monst->_my, fx, fy, md, MIS_RHINO, Monst->_menemy, i, 0, 0) != -1) {
 					if (Monst->MData->snd_special)
 						PlayEffect(i, 3);
-					Monst->_mmode = MM_CHARGE;
 					dMonster[Monst->_mx][Monst->_my] = -1 - i;
+					Monst->_mmode = MM_CHARGE;
 				}
 			} else {
 				if (abs(mx) >= 2 || abs(my) >= 2) {
@@ -4772,7 +4957,7 @@ void MAI_Rhino(int i)
 }
 
 #ifdef HELLFIRE
-void mai_horkdemon(int i)
+void MAI_HorkDemon(int i)
 {
 	MonsterStruct *Monst;
 	int fx, fy, mx, my, md, v, dist;
@@ -4851,7 +5036,11 @@ void MAI_Counselor(int i)
 	MonsterStruct *Monst;
 
 	if ((DWORD)i >= MAXMONSTERS)
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("MAI_Counselor: Invalid monster %d", i);
+#endif
 	if (monster[i]._mmode == MM_STAND && monster[i]._msquelch != 0) {
 		Monst = &monster[i];
 		fx = Monst->_menemyx;
@@ -4968,11 +5157,15 @@ void MAI_Garbud(int i)
 
 void MAI_Zhar(int i)
 {
-	int mx, my, _mx, _my, md;
+	int mx, my, md;
 	MonsterStruct *Monst;
 
 	if ((DWORD)i >= MAXMONSTERS)
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("MAI_Zhar: Invalid monster %d", i);
+#endif
 
 	Monst = &monster[i];
 	if (monster[i]._mmode != MM_STAND) {
@@ -4988,12 +5181,12 @@ void MAI_Zhar(int i)
 	}
 
 	if (dFlags[mx][my] & BFLAG_VISIBLE) {
-		_mx = Monst->_mx - Monst->_menemyx;
-		_my = Monst->_my - Monst->_menemyy;
-		if (abs(_mx) > abs(_my))
-			abs(_mx);
+		mx = Monst->_mx - Monst->_menemyx;
+		my = Monst->_my - Monst->_menemyy;
+		if (abs(mx) > abs(my))
+			abs(mx);
 		else
-			abs(_my);
+			abs(my);
 #ifndef SPAWN
 		if (Monst->mtalkmsg == TEXT_ZHAR2) {
 			if (!effect_is_playing(USFX_ZHAR2) && Monst->_mgoal == MGOAL_TALKING) {
@@ -5020,7 +5213,11 @@ void MAI_SnotSpil(int i)
 	MonsterStruct *Monst;
 
 	if ((DWORD)i >= MAXMONSTERS)
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("MAI_SnotSpil: Invalid monster %d", i);
+#endif
 
 	Monst = &monster[i];
 	if (monster[i]._mmode != MM_STAND) {
@@ -5072,7 +5269,11 @@ void MAI_Lazurus(int i)
 	MonsterStruct *Monst;
 
 	if ((DWORD)i >= MAXMONSTERS)
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("MAI_Lazurus: Invalid monster %d", i);
+#endif
 
 	Monst = &monster[i];
 	if (monster[i]._mmode != MM_STAND) {
@@ -5084,7 +5285,7 @@ void MAI_Lazurus(int i)
 	md = M_GetDir(i);
 	if (dFlags[mx][my] & BFLAG_VISIBLE) {
 		if (gbMaxPlayers == 1) {
-			if (Monst->mtalkmsg == TEXT_VILE13 && Monst->_mgoal == MGOAL_INQUIRING && plr[myplr]._px == TEXT_VILE13 && plr[myplr]._py == 46) {
+			if (Monst->mtalkmsg == TEXT_VILE13 && Monst->_mgoal == MGOAL_INQUIRING && plr[myplr]._px == 35 && plr[myplr]._py == 46) {
 				PlayInGameMovie("gendata\\fprst3.smk");
 				Monst->_mmode = MM_TALK;
 				quests[Q_BETRAYER]._qvar1 = 5;
@@ -5094,10 +5295,10 @@ void MAI_Lazurus(int i)
 			if (Monst->mtalkmsg == TEXT_VILE13 && !effect_is_playing(USFX_LAZ1) && Monst->_mgoal == MGOAL_TALKING) {
 				ObjChangeMapResync(1, 18, 20, 24);
 				RedoPlayerVision();
-				Monst->_msquelch = UCHAR_MAX;
-				Monst->mtalkmsg = 0;
 				quests[Q_BETRAYER]._qvar1 = 6;
 				Monst->_mgoal = MGOAL_NORMAL;
+				Monst->_msquelch = UCHAR_MAX;
+				Monst->mtalkmsg = 0;
 			}
 #endif
 		}
@@ -5108,7 +5309,9 @@ void MAI_Lazurus(int i)
 	}
 
 	if (Monst->_mgoal == MGOAL_NORMAL || Monst->_mgoal == MGOAL_RETREAT || Monst->_mgoal == MGOAL_MOVE) {
+#ifndef HELLFIRE
 		Monst->mtalkmsg = 0;
+#endif
 		MAI_Counselor(i);
 	}
 
@@ -5125,7 +5328,11 @@ void MAI_Lazhelp(int i)
 	MonsterStruct *Monst;
 
 	if ((DWORD)i >= MAXMONSTERS)
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("MAI_Lazhelp: Invalid monster %d", i);
+#endif
 	if (monster[i]._mmode != MM_STAND)
 		return;
 
@@ -5139,8 +5346,8 @@ void MAI_Lazhelp(int i)
 			if (quests[Q_BETRAYER]._qvar1 <= 5) {
 				Monst->_mgoal = MGOAL_INQUIRING;
 			} else {
-				Monst->mtalkmsg = 0;
 				Monst->_mgoal = MGOAL_NORMAL;
+				Monst->mtalkmsg = 0;
 			}
 		} else
 			Monst->_mgoal = MGOAL_NORMAL;
@@ -5454,7 +5661,11 @@ BOOL DirOK(int i, int mdir)
 	int mcount, mi;
 
 	if ((DWORD)i >= MAXMONSTERS)
+#ifdef HELLFIRE
+		return FALSE;
+#else
 		app_fatal("DirOK: Invalid monster %d", i);
+#endif
 	fx = monster[i]._mx + offset_x[mdir];
 	fy = monster[i]._my + offset_y[mdir];
 	if (fy < 0 || fy >= MAXDUNY || fx < 0 || fx >= MAXDUNX || !PosOkMonst(i, fx, fy))
@@ -5462,16 +5673,13 @@ BOOL DirOK(int i, int mdir)
 	if (mdir == DIR_E) {
 		if (SolidLoc(fx, fy + 1) || dFlags[fx][fy + 1] & BFLAG_MONSTLR)
 			return FALSE;
-	}
-	if (mdir == DIR_W) {
+	} else if (mdir == DIR_W) {
 		if (SolidLoc(fx + 1, fy) || dFlags[fx + 1][fy] & BFLAG_MONSTLR)
 			return FALSE;
-	}
-	if (mdir == DIR_N) {
+	} else if (mdir == DIR_N) {
 		if (SolidLoc(fx + 1, fy) || SolidLoc(fx, fy + 1))
 			return FALSE;
-	}
-	if (mdir == DIR_S)
+	} else if (mdir == DIR_S)
 		if (SolidLoc(fx - 1, fy) || SolidLoc(fx, fy - 1))
 			return FALSE;
 	if (monster[i].leaderflag == 1) {
@@ -5522,6 +5730,7 @@ BOOL LineClearF(BOOL (*Clear)(int, int), int x1, int y1, int x2, int y2)
 	int d;
 	int xincD, yincD, dincD, dincH;
 	int tmp;
+	BOOL done = FALSE;
 
 	xorg = x1;
 	yorg = y1;
@@ -5540,16 +5749,16 @@ BOOL LineClearF(BOOL (*Clear)(int, int), int x1, int y1, int x2, int y2)
 		}
 		if (dy > 0) {
 			d = 2 * dy - dx;
-			dincH = 2 * (dy - dx);
 			dincD = 2 * dy;
+			dincH = 2 * (dy - dx);
 			yincD = 1;
 		} else {
 			d = 2 * dy + dx;
-			dincH = 2 * (dx + dy);
 			dincD = 2 * dy;
+			dincH = 2 * (dx + dy);
 			yincD = -1;
 		}
-		while (x1 != x2 || y1 != y2) {
+		while (!done && (x1 != x2 || y1 != y2)) {
 			if ((d <= 0) ^ (yincD < 0)) {
 				d += dincD;
 			} else {
@@ -5557,8 +5766,7 @@ BOOL LineClearF(BOOL (*Clear)(int, int), int x1, int y1, int x2, int y2)
 				y1 += yincD;
 			}
 			x1++;
-			if ((x1 != xorg || y1 != yorg) && !Clear(x1, y1))
-				break;
+			done = ((x1 != xorg || y1 != yorg) && !Clear(x1, y1));
 		}
 	} else {
 		if (dy < 0) {
@@ -5573,16 +5781,16 @@ BOOL LineClearF(BOOL (*Clear)(int, int), int x1, int y1, int x2, int y2)
 		}
 		if (dx > 0) {
 			d = 2 * dx - dy;
-			dincH = 2 * (dx - dy);
 			dincD = 2 * dx;
+			dincH = 2 * (dx - dy);
 			xincD = 1;
 		} else {
 			d = 2 * dx + dy;
-			dincH = 2 * (dy + dx);
 			dincD = 2 * dx;
+			dincH = 2 * (dy + dx);
 			xincD = -1;
 		}
-		while (y1 != y2 || x1 != x2) {
+		while (!done && (y1 != y2 || x1 != x2)) {
 			if ((d <= 0) ^ (xincD < 0)) {
 				d += dincD;
 			} else {
@@ -5590,8 +5798,7 @@ BOOL LineClearF(BOOL (*Clear)(int, int), int x1, int y1, int x2, int y2)
 				x1 += xincD;
 			}
 			y1++;
-			if ((y1 != yorg || x1 != xorg) && !Clear(x1, y1))
-				break;
+			done = ((y1 != yorg || x1 != xorg) && !Clear(x1, y1));
 		}
 	}
 	return x1 == x2 && y1 == y2;
@@ -5604,11 +5811,12 @@ BOOL LineClear(int x1, int y1, int x2, int y2)
 
 BOOL LineClearF1(BOOL (*Clear)(int, int, int), int monst, int x1, int y1, int x2, int y2)
 {
-	int xorg, yorg;
 	int dx, dy;
 	int d;
+	int xorg, yorg;
 	int xincD, yincD, dincD, dincH;
 	int tmp;
+	BOOL done = FALSE;
 
 	xorg = x1;
 	yorg = y1;
@@ -5627,16 +5835,16 @@ BOOL LineClearF1(BOOL (*Clear)(int, int, int), int monst, int x1, int y1, int x2
 		}
 		if (dy > 0) {
 			d = 2 * dy - dx;
-			dincH = 2 * (dy - dx);
 			dincD = 2 * dy;
+			dincH = 2 * (dy - dx);
 			yincD = 1;
 		} else {
 			d = 2 * dy + dx;
-			dincH = 2 * (dx + dy);
 			dincD = 2 * dy;
+			dincH = 2 * (dx + dy);
 			yincD = -1;
 		}
-		while (x1 != x2 || y1 != y2) {
+		while (!done && (x1 != x2 || y1 != y2)) {
 			if ((d <= 0) ^ (yincD < 0)) {
 				d += dincD;
 			} else {
@@ -5644,8 +5852,7 @@ BOOL LineClearF1(BOOL (*Clear)(int, int, int), int monst, int x1, int y1, int x2
 				y1 += yincD;
 			}
 			x1++;
-			if ((x1 != xorg || y1 != yorg) && !Clear(monst, x1, y1))
-				break;
+			done = ((x1 != xorg || y1 != yorg) && !Clear(monst, x1, y1));
 		}
 	} else {
 		if (dy < 0) {
@@ -5660,16 +5867,16 @@ BOOL LineClearF1(BOOL (*Clear)(int, int, int), int monst, int x1, int y1, int x2
 		}
 		if (dx > 0) {
 			d = 2 * dx - dy;
-			dincH = 2 * (dx - dy);
 			dincD = 2 * dx;
+			dincH = 2 * (dx - dy);
 			xincD = 1;
 		} else {
 			d = 2 * dx + dy;
-			dincH = 2 * (dy + dx);
 			dincD = 2 * dx;
+			dincH = 2 * (dy + dx);
 			xincD = -1;
 		}
-		while (y1 != y2 || x1 != x2) {
+		while (!done && (y1 != y2 || x1 != x2)) {
 			if ((d <= 0) ^ (xincD < 0)) {
 				d += dincD;
 			} else {
@@ -5677,8 +5884,7 @@ BOOL LineClearF1(BOOL (*Clear)(int, int, int), int monst, int x1, int y1, int x2
 				x1 += xincD;
 			}
 			y1++;
-			if ((y1 != yorg || x1 != xorg) && !Clear(monst, x1, y1))
-				break;
+			done = ((y1 != yorg || x1 != xorg) && !Clear(monst, x1, y1));
 		}
 	}
 	return x1 == x2 && y1 == y2;
@@ -5809,6 +6015,15 @@ void PrintMonstHistory(int mt)
 			minHP = 1;
 		if (maxHP < 1)
 			maxHP = 1;
+#ifdef HELLFIRE
+		if (gnDifficulty == DIFF_NIGHTMARE) {
+			minHP = 3 * minHP + (gbMaxPlayers == 1 ? 50 : 100);
+			maxHP = 3 * maxHP + (gbMaxPlayers == 1 ? 50 : 100);
+		} else if (gnDifficulty == DIFF_HELL) {
+			minHP = 4 * minHP + (gbMaxPlayers == 1 ? 100 : 200);
+			maxHP = 4 * maxHP + (gbMaxPlayers == 1 ? 100 : 200);
+		}
+#else
 		if (gnDifficulty == DIFF_NIGHTMARE) {
 			minHP = 3 * minHP + 1;
 			maxHP = 3 * maxHP + 1;
@@ -5817,6 +6032,7 @@ void PrintMonstHistory(int mt)
 			minHP = 4 * minHP + 3;
 			maxHP = 4 * maxHP + 3;
 		}
+#endif
 		sprintf(tempstr, "Hit Points : %i-%i", minHP, maxHP);
 		AddPanelString(tempstr, TRUE);
 	}
@@ -5891,13 +6107,21 @@ void MissToMonst(int i, int x, int y)
 	MonsterStruct *Monst;
 
 	if ((DWORD)i >= MAXMISSILES)
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("MissToMonst: Invalid missile %d", i);
+#endif
 
 	Miss = &missile[i];
 	m = Miss->_misource;
 
 	if ((DWORD)m >= MAXMONSTERS)
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("MissToMonst: Invalid monster %d", m);
+#endif
 
 	Monst = &monster[m];
 	oldx = Miss->_mix;
@@ -5988,14 +6212,14 @@ BOOL PosOkMonst(int i, int x, int y)
 			ret = FALSE;
 	}
 
-	if (ret && dMissile[x][y] && i >= 0) {
+	if (ret && dMissile[x][y] != 0 && i >= 0) {
 		mi = dMissile[x][y];
 		if (mi > 0) {
 			if (missile[mi]._mitype == MIS_FIREWALL) { // BUGFIX: Change 'mi' to 'mi - 1'
 				fire = TRUE;
 			} else {
 				for (j = 0; j < nummissiles; j++) {
-					if (missile[missileactive[j]]._mitype == MIS_FIREWALL)
+					if (missile[missileactive[j]]._mitype == MIS_FIREWALL) // BUGFIX: Check missile x/y
 						fire = TRUE;
 				}
 			}
@@ -6076,14 +6300,14 @@ BOOL PosOkMonst2(int i, int x, int y)
 			ret = FALSE;
 	}
 
-	if (ret && dMissile[x][y] && i >= 0) {
+	if (ret && dMissile[x][y] != 0 && i >= 0) {
 		mi = dMissile[x][y];
 		if (mi > 0) {
 			if (missile[mi]._mitype == MIS_FIREWALL) { // BUGFIX: Change 'mi' to 'mi - 1'
 				fire = TRUE;
 			} else {
 				for (j = 0; j < nummissiles; j++) {
-					if (missile[missileactive[j]]._mitype == MIS_FIREWALL)
+					if (missile[missileactive[j]]._mitype == MIS_FIREWALL) // BUGFIX: Check missile x/y
 						fire = TRUE;
 				}
 			}
@@ -6149,16 +6373,13 @@ BOOL PosOkMonst3(int i, int x, int y)
 				fire = TRUE;
 			} else {
 				for (j = 0; j < nummissiles; j++) {
-					mi = missileactive[j];
-					if (missile[mi]._mitype == MIS_FIREWALL) {
+					if (missile[missileactive[j]]._mitype == MIS_FIREWALL) // BUGFIX: Check missile x/y
 						fire = TRUE;
-					}
 				}
 			}
 		}
-		if (fire && (!(monster[i].mMagicRes & IMMUNE_FIRE) || monster[i].MType->mtype == MT_DIABLO)) {
+		if (fire && (!(monster[i].mMagicRes & IMMUNE_FIRE) || monster[i].MType->mtype == MT_DIABLO))
 			ret = FALSE;
-		}
 	}
 #endif
 
@@ -6335,7 +6556,11 @@ void TalktoMonster(int i)
 void SpawnGolum(int i, int x, int y, int mi)
 {
 	if ((DWORD)i >= MAXMONSTERS)
+#ifdef HELLFIRE
+		return;
+#else
 		app_fatal("SpawnGolum: Invalid monster %d", i);
+#endif
 
 	dMonster[x][y] = i + 1;
 	monster[i]._mx = x;
@@ -6345,13 +6570,13 @@ void SpawnGolum(int i, int x, int y, int mi)
 	monster[i]._moldx = x;
 	monster[i]._moldy = y;
 	monster[i]._pathcount = 0;
-	monster[i]._mFlags |= MFLAG_GOLEM;
-	monster[i].mArmorClass = 25;
 	monster[i]._mmaxhp = 2 * (320 * missile[mi]._mispllvl + plr[i]._pMaxMana / 3);
 	monster[i]._mhitpoints = monster[i]._mmaxhp;
+	monster[i].mArmorClass = 25;
 	monster[i].mHit = 5 * (missile[mi]._mispllvl + 8) + 2 * plr[i]._pLevel;
 	monster[i].mMinDamage = 2 * (missile[mi]._mispllvl + 4);
 	monster[i].mMaxDamage = 2 * (missile[mi]._mispllvl + 8);
+	monster[i]._mFlags |= MFLAG_GOLEM;
 	M_StartSpStand(i, 0);
 	M_Enemy(i);
 	if (i == myplr) {

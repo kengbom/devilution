@@ -404,7 +404,7 @@ int GetDirection16(int x1, int y1, int x2, int y2)
 	my = abs(y2 - y1);
 	if (my > 15)
 		my = 15;
-	md = Dirs[my][mx];
+	md = Dirs[my][mx]; // BUGFIX, md can be 99, leading to an OOB read
 	if (x1 > x2) {
 		if (y1 > y2)
 			md = urtoll[md];
@@ -667,24 +667,53 @@ BOOL MonsterMHit(int pnum, int m, int mindam, int maxdam, int dist, int t, BOOLE
 	    || mor & RESIST_LIGHTNING && mir == MISR_LIGHTNING)
 		resist = TRUE;
 
+#ifdef HELLFIRE
+	if (t == MIS_HBOLT && (monster[m].MType->mtype == MT_DIABLO || monster[m].MType->mtype == MT_BONEDEMN))
+		resist = TRUE;
+#endif
+
 	hit = random_(69, 100);
-	if (!missiledata[t].mType) {
-		hper = plr[pnum]._pDexterity
-		    + plr[pnum]._pIBonusToHit
-		    + plr[pnum]._pLevel
-		    - monster[m].mArmorClass
-		    - (dist * dist >> 1)
-		    + plr[pnum]._pIEnAc
-		    + 50;
-		if (plr[pnum]._pClass == PC_ROGUE)
-			hper += 20;
-		if (plr[pnum]._pClass == PC_WARRIOR)
-			hper += 10;
+#ifdef HELLFIRE
+	if (pnum != -1) {
+#endif
+		if (missiledata[t].mType == 0) {
+			hper = plr[pnum]._pDexterity;
+			hper += plr[pnum]._pIBonusToHit;
+			hper += plr[pnum]._pLevel;
+			hper -= monster[m].mArmorClass;
+			hper -= (dist * dist) >> 1;
+#ifdef HELLFIRE
+			hper -= plr[pnum]._pIEnAc;
+#endif
+#ifndef HELLFIRE
+			hper += plr[pnum]._pIEnAc;
+#endif
+			hper += 50;
+			if (plr[pnum]._pClass == PC_ROGUE)
+				hper += 20;
+#ifdef HELLFIRE
+			if (plr[pnum]._pClass == PC_WARRIOR || plr[pnum]._pClass == PC_BARD)
+				hper += 10;
+#endif
+#ifndef HELLFIRE
+			if (plr[pnum]._pClass == PC_WARRIOR)
+				hper += 10;
+#endif
+		} else {
+			hper = plr[pnum]._pMagic - (monster[m].mLevel << 1) - dist + 50;
+			if (plr[pnum]._pClass == PC_SORCERER)
+				hper += 20;
+#ifdef HELLFIRE
+			else if (plr[pnum]._pClass == PC_BARD)
+				hper += 10;
+#endif
+		}
+#ifdef HELLFIRE
 	} else {
-		hper = plr[pnum]._pMagic - (monster[m].mLevel << 1) - dist + 50;
-		if (plr[pnum]._pClass == PC_SORCERER)
-			hper += 20;
+		hper = random_(71, 75) - monster[m].mLevel * 2;
 	}
+#endif
+
 	if (hper < 5)
 		hper = 5;
 	if (hper > 95)
@@ -694,67 +723,80 @@ BOOL MonsterMHit(int pnum, int m, int mindam, int maxdam, int dist, int t, BOOLE
 	if (CheckMonsterHit(m, ret))
 		return ret;
 #ifdef _DEBUG
-	if (hit >= hper && !debug_mode_key_inverted_v && !debug_mode_dollar_sign)
-		return FALSE;
+	if (hit < hper || debug_mode_key_inverted_v || debug_mode_dollar_sign) {
 #else
-	if (hit >= hper)
-		return FALSE;
+	if (hit < hper) {
 #endif
-	if (t == MIS_BONESPIRIT) {
-		dam = monster[m]._mhitpoints / 3 >> 6;
-	} else {
-		dam = mindam + random_(70, maxdam - mindam + 1);
-	}
-	if (!missiledata[t].mType) {
-		dam = plr[pnum]._pIBonusDamMod + dam * plr[pnum]._pIBonusDam / 100 + dam;
-		if (plr[pnum]._pClass == PC_ROGUE)
-			dam += plr[pnum]._pDamageMod;
-		else
-			dam += (plr[pnum]._pDamageMod >> 1);
-	}
-	if (!shift)
-		dam <<= 6;
-	if (resist)
-		dam >>= 2;
-	if (pnum == myplr)
-		monster[m]._mhitpoints -= dam;
-	if (plr[pnum]._pIFlags & ISPL_FIRE_ARROWS)
-		monster[m]._mFlags |= MFLAG_NOHEAL;
-
-	if (monster[m]._mhitpoints >> 6 <= 0) {
-		if (monster[m]._mmode == MM_STONE) {
-			M_StartKill(m, pnum);
-			monster[m]._mmode = MM_STONE;
+		if (t == MIS_BONESPIRIT) {
+			dam = monster[m]._mhitpoints / 3 >> 6;
 		} else {
-			M_StartKill(m, pnum);
+			dam = mindam + random_(70, maxdam - mindam + 1);
 		}
-	} else {
-		if (resist) {
-			PlayEffect(m, 1);
-		} else if (monster[m]._mmode == MM_STONE) {
-			if (m > MAX_PLRS - 1)
-				M_StartHit(m, pnum, dam);
-			monster[m]._mmode = MM_STONE;
-		} else {
-			if (!missiledata[t].mType && plr[pnum]._pIFlags & ISPL_KNOCKBACK) {
-				M_GetKnockback(m);
+		if (missiledata[t].mType == 0) {
+			dam = plr[pnum]._pIBonusDamMod + dam * plr[pnum]._pIBonusDam / 100 + dam;
+			if (plr[pnum]._pClass == PC_ROGUE)
+				dam += plr[pnum]._pDamageMod;
+			else
+				dam += (plr[pnum]._pDamageMod >> 1);
+		}
+		if (!shift)
+			dam <<= 6;
+		if (resist)
+			dam >>= 2;
+		if (pnum == myplr)
+			monster[m]._mhitpoints -= dam;
+#ifdef HELLFIRE
+		if (plr[pnum]._pIFlags & ISPL_NOHEALMON)
+#else
+		if (plr[pnum]._pIFlags & ISPL_FIRE_ARROWS)
+#endif
+			monster[m]._mFlags |= MFLAG_NOHEAL;
+
+		if (monster[m]._mhitpoints >> 6 <= 0) {
+			if (monster[m]._mmode == MM_STONE) {
+				M_StartKill(m, pnum);
+				monster[m]._mmode = MM_STONE;
+			} else {
+				M_StartKill(m, pnum);
 			}
-			if (m > MAX_PLRS - 1)
-				M_StartHit(m, pnum, dam);
+		} else {
+			if (resist) {
+				PlayEffect(m, 1);
+			} else if (monster[m]._mmode == MM_STONE) {
+				if (m > MAX_PLRS - 1)
+					M_StartHit(m, pnum, dam);
+				monster[m]._mmode = MM_STONE;
+			} else {
+				if (missiledata[t].mType == 0 && plr[pnum]._pIFlags & ISPL_KNOCKBACK) {
+					M_GetKnockback(m);
+				}
+				if (m > MAX_PLRS - 1)
+					M_StartHit(m, pnum, dam);
+			}
 		}
+
+		if (monster[m]._msquelch == 0) {
+			monster[m]._msquelch = UCHAR_MAX;
+			monster[m]._lastx = plr[pnum]._px;
+			monster[m]._lasty = plr[pnum]._py;
+		}
+		return TRUE;
 	}
 
-	if (!monster[m]._msquelch) {
-		monster[m]._msquelch = UCHAR_MAX;
-		monster[m]._lastx = plr[pnum]._px;
-		monster[m]._lasty = plr[pnum]._py;
-	}
-	return TRUE;
+	return FALSE;
 }
 
-BOOL PlayerMHit(int pnum, int m, int dist, int mind, int maxd, int mtype, BOOLEAN shift, int earflag)
+BOOL PlayerMHit(int pnum, int m, int dist, int mind, int maxd, int mtype, BOOLEAN shift, int earflag
+#ifdef HELLFIRE
+    ,
+    BOOLEAN *blocked
+#endif
+)
 {
 	int hit, hper, tac, dam, blk, blkper, resper;
+#ifdef HELLFIRE
+	*blocked = false;
+#endif
 
 	if (plr[pnum]._pHitPoints >> 6 <= 0) {
 		return FALSE;
@@ -764,7 +806,7 @@ BOOL PlayerMHit(int pnum, int m, int dist, int mind, int maxd, int mtype, BOOLEA
 		return FALSE;
 	}
 
-	if (plr[pnum]._pSpellFlags & 1 && !missiledata[mtype].mType) {
+	if (plr[pnum]._pSpellFlags & 1 && missiledata[mtype].mType == 0) {
 		return FALSE;
 	}
 
@@ -773,7 +815,7 @@ BOOL PlayerMHit(int pnum, int m, int dist, int mind, int maxd, int mtype, BOOLEA
 	if (debug_mode_dollar_sign || debug_mode_key_inverted_v)
 		hit = 1000;
 #endif
-	if (!missiledata[mtype].mType) {
+	if (missiledata[mtype].mType == 0) {
 		tac = plr[pnum]._pIAC + plr[pnum]._pIBonusAC + plr[pnum]._pDexterity / 5;
 		if (m != -1) {
 			hper = monster[m].mHit
@@ -814,7 +856,7 @@ BOOL PlayerMHit(int pnum, int m, int dist, int mind, int maxd, int mtype, BOOLEA
 	if (mtype == MIS_ACIDPUD)
 		blk = 100;
 	if (m != -1)
-		blkper = plr[pnum]._pBaseToBlk + (plr[pnum]._pLevel << 1) - (monster[m].mLevel << 1) + plr[pnum]._pDexterity;
+		blkper = plr[pnum]._pBaseToBlk + plr[pnum]._pDexterity - ((monster[m].mLevel - plr[pnum]._pLevel) << 1);
 	else
 		blkper = plr[pnum]._pBaseToBlk + plr[pnum]._pDexterity;
 	if (blkper < 0)
@@ -845,19 +887,37 @@ BOOL PlayerMHit(int pnum, int m, int dist, int mind, int maxd, int mtype, BOOLEA
 			if (shift == FALSE) {
 
 				dam = (mind << 6) + random_(75, (maxd - mind + 1) << 6);
-				if (m == -1 && plr[pnum]._pIFlags & ISPL_ABSHALFTRAP)
-					dam >>= 1;
+#ifndef HELLFIRE
+				if (m == -1)
+#endif
+					if (plr[pnum]._pIFlags & ISPL_ABSHALFTRAP)
+						dam >>= 1;
 				dam += (plr[pnum]._pIGetHit << 6);
 			} else {
 				dam = mind + random_(75, maxd - mind + 1);
-				if (m == -1 && plr[pnum]._pIFlags & ISPL_ABSHALFTRAP)
-					dam >>= 1;
+#ifndef HELLFIRE
+				if (m == -1)
+#endif
+					if (plr[pnum]._pIFlags & ISPL_ABSHALFTRAP)
+						dam >>= 1;
 				dam += plr[pnum]._pIGetHit;
 			}
 
 			if (dam < 64)
 				dam = 64;
 		}
+#ifdef HELLFIRE
+		if (blk < blkper) {
+			if (m != -1) {
+				tac = GetDirection(plr[pnum]._px, plr[pnum]._py, monster[m]._mx, monster[m]._my);
+			} else {
+				tac = plr[pnum]._pdir;
+			}
+			*blocked = true;
+			StartPlrBlock(pnum, tac);
+			return TRUE;
+		}
+#endif
 		if (resper > 0) {
 
 			dam = dam - dam * resper / 100;
@@ -881,10 +941,20 @@ BOOL PlayerMHit(int pnum, int m, int dist, int mind, int maxd, int mtype, BOOLEA
 				} else if (plr[pnum]._pClass == PC_SORCERER) {
 					PlaySfxLoc(PS_MAGE69, plr[pnum]._px, plr[pnum]._py);
 #endif
+#ifdef HELLFIRE
+				} else if (plr[pnum]._pClass == PC_MONK) {
+					PlaySfxLoc(PS_MONK69, plr[pnum]._px, plr[pnum]._py);
+				} else if (plr[pnum]._pClass == PC_BARD) {
+					PlaySfxLoc(PS_ROGUE69, plr[pnum]._px, plr[pnum]._py);
+				} else if (plr[pnum]._pClass == PC_BARBARIAN) {
+					PlaySfxLoc(PS_WARR69, plr[pnum]._px, plr[pnum]._py);
+#endif
 				}
 				drawhpflag = TRUE;
 			}
+			return TRUE;
 		} else {
+#ifndef HELLFIRE
 			if (blk < blkper) {
 				if (m != -1) {
 					tac = GetDirection(plr[pnum]._px, plr[pnum]._py, monster[m]._mx, monster[m]._my);
@@ -892,7 +962,9 @@ BOOL PlayerMHit(int pnum, int m, int dist, int mind, int maxd, int mtype, BOOLEA
 					tac = plr[pnum]._pdir;
 				}
 				StartPlrBlock(pnum, tac);
-			} else {
+			} else
+#endif
+			{
 				if (pnum == myplr) {
 					plr[pnum]._pHitPoints -= dam;
 					plr[pnum]._pHPBase -= dam;
@@ -907,16 +979,24 @@ BOOL PlayerMHit(int pnum, int m, int dist, int mind, int maxd, int mtype, BOOLEA
 					StartPlrHit(pnum, dam, FALSE);
 				}
 			}
+			return TRUE;
 		}
-		return TRUE;
 	}
 	return FALSE;
 }
 
-BOOL Plr2PlrMHit(int pnum, int p, int mindam, int maxdam, int dist, int mtype, BOOLEAN shift)
+BOOL Plr2PlrMHit(int pnum, int p, int mindam, int maxdam, int dist, int mtype, BOOLEAN shift
+#ifdef HELLFIRE
+    ,
+    BOOLEAN *blocked
+#endif
+)
 {
-	int tac, resper, dam, blk, blkper, hper, hit;
+	int dam, blk, blkper, hper, hit, resper;
 
+#ifdef HELLFIRE
+	*blocked = false;
+#endif
 	if (plr[p]._pInvincible) {
 		return FALSE;
 	}
@@ -925,7 +1005,7 @@ BOOL Plr2PlrMHit(int pnum, int p, int mindam, int maxdam, int dist, int mtype, B
 		return FALSE;
 	}
 
-	if (plr[p]._pSpellFlags & 1 && !missiledata[mtype].mType) {
+	if (plr[p]._pSpellFlags & 1 && missiledata[mtype].mType == 0) {
 		return FALSE;
 	}
 
@@ -945,7 +1025,7 @@ BOOL Plr2PlrMHit(int pnum, int p, int mindam, int maxdam, int dist, int mtype, B
 		break;
 	}
 	hper = random_(69, 100);
-	if (!missiledata[mtype].mType) {
+	if (missiledata[mtype].mType == 0) {
 		hit = plr[pnum]._pIBonusToHit
 		    + plr[pnum]._pLevel
 		    - (dist * dist >> 1)
@@ -955,7 +1035,11 @@ BOOL Plr2PlrMHit(int pnum, int p, int mindam, int maxdam, int dist, int mtype, B
 		    + plr[pnum]._pDexterity + 50;
 		if (plr[pnum]._pClass == PC_ROGUE)
 			hit += 20;
+#ifdef HELLFIRE
+		if (plr[pnum]._pClass == PC_WARRIOR || plr[pnum]._pClass == PC_BARD)
+#else
 		if (plr[pnum]._pClass == PC_WARRIOR)
+#endif
 			hit += 10;
 	} else {
 		hit = plr[pnum]._pMagic
@@ -964,6 +1048,10 @@ BOOL Plr2PlrMHit(int pnum, int p, int mindam, int maxdam, int dist, int mtype, B
 		    + 50;
 		if (plr[pnum]._pClass == PC_SORCERER)
 			hit += 20;
+#ifdef HELLFIRE
+		else if (plr[pnum]._pClass == PC_BARD)
+			hit += 10;
+#endif
 	}
 	if (hit < 5)
 		hit = 5;
@@ -990,38 +1078,48 @@ BOOL Plr2PlrMHit(int pnum, int p, int mindam, int maxdam, int dist, int mtype, B
 			dam = plr[p]._pHitPoints / 3;
 		} else {
 			dam = mindam + random_(70, maxdam - mindam + 1);
-			if (!missiledata[mtype].mType)
+			if (missiledata[mtype].mType == 0)
 				dam += plr[pnum]._pIBonusDamMod + plr[pnum]._pDamageMod + dam * plr[pnum]._pIBonusDam / 100;
 			if (!shift)
 				dam <<= 6;
 		}
-		if (missiledata[mtype].mType)
+		if (missiledata[mtype].mType != 0)
 			dam >>= 1;
 		if (resper > 0) {
+			dam -= (dam * resper) / 100;
 			if (pnum == myplr)
-				NetSendCmdDamage(TRUE, p, dam - resper * dam / 100);
+				NetSendCmdDamage(TRUE, p, dam);
 			if (plr[pnum]._pClass == PC_WARRIOR) {
-				tac = PS_WARR69;
+				PlaySfxLoc(PS_WARR69, plr[pnum]._px, plr[pnum]._py);
 #ifndef SPAWN
 			} else if (plr[pnum]._pClass == PC_ROGUE) {
-				tac = PS_ROGUE69;
+				PlaySfxLoc(PS_ROGUE69, plr[pnum]._px, plr[pnum]._py);
 			} else if (plr[pnum]._pClass == PC_SORCERER) {
-				tac = PS_MAGE69;
+				PlaySfxLoc(PS_MAGE69, plr[pnum]._px, plr[pnum]._py);
 #endif
-			} else {
-				return TRUE;
+#ifdef HELLFIRE
+			} else if (plr[pnum]._pClass == PC_MONK) {
+				PlaySfxLoc(PS_MONK69, plr[pnum]._px, plr[pnum]._py);
+			} else if (plr[pnum]._pClass == PC_BARD) {
+				PlaySfxLoc(PS_ROGUE69, plr[pnum]._px, plr[pnum]._py);
+			} else if (plr[pnum]._pClass == PC_BARBARIAN) {
+				PlaySfxLoc(PS_WARR69, plr[pnum]._px, plr[pnum]._py);
+#endif
 			}
-			PlaySfxLoc(tac, plr[pnum]._px, plr[pnum]._py);
+			return TRUE;
 		} else {
 			if (blkper < blk) {
 				StartPlrBlock(p, GetDirection(plr[p]._px, plr[p]._py, plr[pnum]._px, plr[pnum]._py));
+#ifdef HELLFIRE
+				*blocked = true;
+#endif
 			} else {
 				if (pnum == myplr)
 					NetSendCmdDamage(TRUE, p, dam);
 				StartPlrHit(p, dam, FALSE);
 			}
+			return TRUE;
 		}
-		return TRUE;
 	}
 	return FALSE;
 }
@@ -1029,8 +1127,20 @@ BOOL Plr2PlrMHit(int pnum, int p, int mindam, int maxdam, int dist, int mtype, B
 void CheckMissileCol(int i, int mindam, int maxdam, BOOL shift, int mx, int my, BOOLEAN nodel)
 {
 	int oi;
+#ifdef HELLFIRE
+	int dir, mAnimFAmt;
+	BOOLEAN blocked;
 
+	if (i >= MAXMISSILES || i < 0)
+		return;
+	if (mx >= MAXDUNX || mx < 0)
+		return;
+	if (my >= MAXDUNY || my < 0)
+		return;
+	if (missile[i]._micaster != TARGET_BOTH && missile[i]._misource != -1) {
+#else
 	if (missile[i]._miAnimType != MFILE_FIREWAL && missile[i]._misource != -1) {
+#endif
 		if (missile[i]._micaster == TARGET_MONSTERS) {
 			if (dMonster[mx][my] > 0) {
 				if (MonsterMHit(
@@ -1070,9 +1180,28 @@ void CheckMissileCol(int i, int mindam, int maxdam, BOOL shift, int mx, int my, 
 			        maxdam,
 			        missile[i]._midist,
 			        missile[i]._mitype,
-			        shift)) {
-				if (!nodel)
-					missile[i]._mirange = 0;
+			        shift
+#ifdef HELLFIRE
+			        ,
+			        &blocked
+#endif
+			        )) {
+#ifdef HELLFIRE
+				if (blocked) {
+					dir = missile[i]._mimfnum + (random_(10, 2) ? 1 : -1);
+					mAnimFAmt = misfiledata[missile[i]._miAnimType].mAnimFAmt;
+					if (dir < 0)
+						dir = mAnimFAmt - 1;
+					else if (dir > mAnimFAmt)
+						dir = 0;
+
+					SetMissDir(i, dir);
+				} else
+#endif
+				{
+					if (!nodel)
+						missile[i]._mirange = 0;
+				}
 				missile[i]._miHitFlag = TRUE;
 			}
 		} else {
@@ -1093,15 +1222,38 @@ void CheckMissileCol(int i, int mindam, int maxdam, BOOL shift, int mx, int my, 
 			        maxdam,
 			        missile[i]._mitype,
 			        shift,
-			        0)) {
-				if (!nodel)
-					missile[i]._mirange = 0;
+			        0
+#ifdef HELLFIRE
+			        ,
+			        &blocked
+#endif
+			        )) {
+#ifdef HELLFIRE
+				if (blocked) {
+					dir = missile[i]._mimfnum + (random_(10, 2) ? 1 : -1);
+					mAnimFAmt = misfiledata[missile[i]._miAnimType].mAnimFAmt;
+					if (dir < 0)
+						dir = mAnimFAmt - 1;
+					else if (dir > mAnimFAmt)
+						dir = 0;
+
+					SetMissDir(i, dir);
+				} else
+#endif
+				{
+					if (!nodel)
+						missile[i]._mirange = 0;
+				}
 				missile[i]._miHitFlag = TRUE;
 			}
 		}
 	} else {
 		if (dMonster[mx][my] > 0) {
+#ifdef HELLFIRE
+			if (missile[i]._micaster == TARGET_BOTH) {
+#else
 			if (missile[i]._miAnimType == MFILE_FIREWAL) {
+#endif
 				if (MonsterMHit(
 				        missile[i]._misource,
 				        dMonster[mx][my] - 1,
@@ -1121,9 +1273,28 @@ void CheckMissileCol(int i, int mindam, int maxdam, BOOL shift, int mx, int my, 
 			}
 		}
 		if (dPlayer[mx][my] > 0
-		    && PlayerMHit(dPlayer[mx][my] - 1, -1, missile[i]._midist, mindam, maxdam, missile[i]._mitype, shift, missile[i]._miAnimType == MFILE_FIREWAL)) {
-			if (!nodel)
-				missile[i]._mirange = 0;
+		    && PlayerMHit(dPlayer[mx][my] - 1, -1, missile[i]._midist, mindam, maxdam, missile[i]._mitype, shift, missile[i]._miAnimType == MFILE_FIREWAL
+#ifdef HELLFIRE
+		            || missile[i]._miAnimType == MFILE_LGHNING,
+		        &blocked
+#endif
+		        )) {
+#ifdef HELLFIRE
+			if (blocked) {
+				dir = missile[i]._mimfnum + (random_(10, 2) ? 1 : -1);
+				mAnimFAmt = misfiledata[missile[i]._miAnimType].mAnimFAmt;
+				if (dir < 0)
+					dir = mAnimFAmt - 1;
+				else if (dir > mAnimFAmt)
+					dir = 0;
+
+				SetMissDir(i, dir);
+			} else
+#endif
+			{
+				if (!nodel)
+					missile[i]._mirange = 0;
+			}
 			missile[i]._miHitFlag = TRUE;
 		}
 	}
@@ -1303,7 +1474,7 @@ void InitMissiles()
 		}
 	}
 #ifdef HELLFIRE
-	plr[myplr].wReflection = FALSE;
+	plr[myplr].wReflections = 0;
 #endif
 }
 
@@ -1445,7 +1616,7 @@ void missiles_reflection(int mi, int sx, int sy, int dx, int dy, int midir, char
 			lvl = missile[mi]._mispllvl;
 		else
 			lvl = 2;
-		plr[id].wReflection += lvl * plr[id]._pLevel;
+		plr[id].wReflections += lvl * plr[id]._pLevel;
 		UseMana(id, SPL_REFLECT);
 	}
 	missile[mi]._mirange = 0;
@@ -1498,7 +1669,7 @@ void missiles_berserk(int mi, int sx, int sy, int dx, int dy, int midir, char mi
 	missile[mi]._miDelFlag = TRUE;
 }
 
-void missiles_430624(int mi, int sx, int sy, int dx, int dy, int midir, char mienemy, int id, int dam)
+void missiles_hork_spawn(int mi, int sx, int sy, int dx, int dy, int midir, char mienemy, int id, int dam)
 {
 	GetMissileVel(mi, sx, sy, dx, dy, 8);
 	missile[mi]._mirange = 9;
@@ -1568,46 +1739,48 @@ void missiles_steal_pots(int mi, int sx, int sy, int dx, int dy, int midir, char
 					for (si = 0; si < MAXBELTITEMS; si++) {
 						ii = -1;
 						if (plr[pnum].SpdList[si]._itype == ITYPE_MISC) {
-							if (random_(205, 2) != 0) {
-								switch (plr[pnum].SpdList[si]._iMiscId) {
-								case IMISC_FULLHEAL:
-									ii = ItemMiscIdIdx(IMISC_HEAL);
-									break;
-								case IMISC_HEAL:
-								case IMISC_MANA:
-									RemoveSpdBarItem(pnum, si);
-									continue;
-								case IMISC_FULLMANA:
+							if (random_(205, 2) == 0)
+								continue;
+							switch (plr[pnum].SpdList[si]._iMiscId) {
+							case IMISC_FULLHEAL:
+								ii = ItemMiscIdIdx(IMISC_HEAL);
+								break;
+							case IMISC_HEAL:
+							case IMISC_MANA:
+								RemoveSpdBarItem(pnum, si);
+								continue;
+							case IMISC_FULLMANA:
+								ii = ItemMiscIdIdx(IMISC_MANA);
+								break;
+							case IMISC_REJUV:
+								if (random_(205, 2) != 0) {
 									ii = ItemMiscIdIdx(IMISC_MANA);
-									break;
-								case IMISC_REJUV:
-									if (random_(205, 2) != 0) {
-										ii = ItemMiscIdIdx(IMISC_MANA);
-									} else {
-										ii = ItemMiscIdIdx(IMISC_HEAL);
-									}
+								} else {
 									ii = ItemMiscIdIdx(IMISC_HEAL);
+								}
+								ii = ItemMiscIdIdx(IMISC_HEAL);
+								break;
+							case IMISC_FULLREJUV:
+								switch (random_(205, 3)) {
+								case 0:
+									ii = ItemMiscIdIdx(IMISC_FULLMANA);
 									break;
-								case IMISC_FULLREJUV:
-									switch (random_(205, 3)) {
-									case 0:
-										ii = ItemMiscIdIdx(IMISC_FULLMANA);
-										break;
-									case 1:
-										ii = ItemMiscIdIdx(IMISC_FULLHEAL);
-										break;
-									default:
-										ii = ItemMiscIdIdx(IMISC_REJUV);
-										break;
-									}
+								case 1:
+									ii = ItemMiscIdIdx(IMISC_FULLHEAL);
+									break;
+								default:
+									ii = ItemMiscIdIdx(IMISC_REJUV);
 									break;
 								}
+								break;
+							default:
+								continue;
 							}
 						}
 						if (ii != -1) {
 							SetPlrHandItem(&plr[pnum].HoldItem, ii);
 							GetPlrHandSeed(&plr[pnum].HoldItem);
-							plr[pnum].HoldItem._iStatFlag = 1;
+							plr[pnum].HoldItem._iStatFlag = TRUE;
 							plr[pnum].SpdList[si] = plr[pnum].HoldItem;
 						}
 						if (!hasPlayedSFX) {
@@ -2284,14 +2457,26 @@ void AddFirewall(int mi, int sx, int sy, int dx, int dy, int midir, char mienemy
 {
 	int i;
 
-	missile[mi]._midam = (random_(53, 10) + random_(53, 10) + plr[id]._pLevel + 2) << 4;
+#ifdef HELLFIRE
+	missile[mi]._midam = (random_(53, 10) + random_(53, 10) + 2 + (id > 0) ? plr[id]._pLevel : currlevel); // BUGFIX: missing parenthesis around ternary
+#else
+	missile[mi]._midam = (random_(53, 10) + random_(53, 10) + 2 + plr[id]._pLevel);
+#endif
+	missile[mi]._midam <<= 4;
 	missile[mi]._midam >>= 1;
 	GetMissileVel(mi, sx, sy, dx, dy, 16);
-	missile[mi]._mirange = 10;
 	i = missile[mi]._mispllvl;
+	missile[mi]._mirange = 10;
+#ifndef HELLFIRE
 	if (i > 0)
-		missile[mi]._mirange = 10 * (i + 1);
-	missile[mi]._mirange += (plr[id]._pISplDur * missile[mi]._mirange) >> 7;
+#endif
+		missile[mi]._mirange *= i + 1;
+#ifdef HELLFIRE
+	if (mienemy != TARGET_MONSTERS || id < 0)
+		missile[mi]._mirange += currlevel;
+	else
+#endif
+		missile[mi]._mirange += (plr[id]._pISplDur * missile[mi]._mirange) >> 7;
 	missile[mi]._mirange <<= 4;
 	missile[mi]._miVar1 = missile[mi]._mirange - missile[mi]._miAnimLen;
 	missile[mi]._miVar2 = 0;
@@ -3915,7 +4100,7 @@ void MI_Fireball(int i)
 }
 
 #ifdef HELLFIRE
-void missiles_4359A0(int i)
+void mi_hork_spawn(int i)
 {
 	int t, j, k, tx, ty, dp;
 
@@ -4157,40 +4342,40 @@ void mi_light_arrow(int i)
 				    && monster[missile[i]._misource].MType->mtype >= MT_STORM
 				    && monster[missile[i]._misource].MType->mtype <= MT_MAEL) {
 					AddMissile(
-					    mx,
-					    my,
+					    missile[i]._mix,
+					    missile[i]._miy,
 					    missile[i]._misx,
 					    missile[i]._misy,
 					    i,
 					    MIS_LIGHTNING2,
 					    missile[i]._micaster,
 					    missile[i]._misource,
-					    dam,
+					    missile[i]._midam,
 					    missile[i]._mispllvl);
 				} else {
 					AddMissile(
-					    mx,
-					    my,
+					    missile[i]._mix,
+					    missile[i]._miy,
 					    missile[i]._misx,
 					    missile[i]._misy,
 					    i,
 					    MIS_LIGHTNING,
 					    missile[i]._micaster,
 					    missile[i]._misource,
-					    dam,
+					    missile[i]._midam,
 					    missile[i]._mispllvl);
 				}
 			} else {
 				AddMissile(
-				    mx,
-				    my,
+				    missile[i]._mix,
+				    missile[i]._miy,
 				    missile[i]._misx,
 				    missile[i]._misy,
 				    i,
 				    MIS_LIGHTNING,
 				    missile[i]._micaster,
 				    missile[i]._misource,
-				    dam,
+				    missile[i]._midam,
 				    missile[i]._mispllvl);
 			}
 			missile[i]._miVar1 = missile[i]._mix;
@@ -4263,7 +4448,7 @@ void mi_reflect(int i)
 	}
 	if (src != myplr && currlevel != plr[src].plrlevel)
 		missile[i]._miDelFlag = TRUE;
-	if ((WORD)plr[src].wReflection <= 0) {
+	if (plr[src].wReflections <= 0) {
 		missile[i]._miDelFlag = TRUE;
 		NetSendCmd(TRUE, CMD_REFLECT);
 	}
@@ -4507,8 +4692,8 @@ void MI_Lightctrl(int i)
 				    && monster[missile[i]._misource].MType->mtype >= MT_STORM
 				    && monster[missile[i]._misource].MType->mtype <= MT_MAEL) {
 					AddMissile(
-					    mx,
-					    my,
+					    missile[i]._mix,
+					    missile[i]._miy,
 					    missile[i]._misx,
 					    missile[i]._misy,
 					    i,
@@ -4519,8 +4704,8 @@ void MI_Lightctrl(int i)
 					    missile[i]._mispllvl);
 				} else {
 					AddMissile(
-					    mx,
-					    my,
+					    missile[i]._mix,
+					    missile[i]._miy,
 					    missile[i]._misx,
 					    missile[i]._misy,
 					    i,
@@ -4532,8 +4717,8 @@ void MI_Lightctrl(int i)
 				}
 			} else {
 				AddMissile(
-				    mx,
-				    my,
+				    missile[i]._mix,
+				    missile[i]._miy,
 				    missile[i]._misx,
 				    missile[i]._misy,
 				    i,
@@ -5172,26 +5357,35 @@ void mi_null_32(int i)
 
 void MI_FirewallC(int i)
 {
-	int tx, ty, id;
+	int tx, ty, id, dp, micaster;
 
-	id = missile[i]._misource;
 	missile[i]._mirange--;
+	id = missile[i]._misource;
 	if (missile[i]._mirange == 0) {
 		missile[i]._miDelFlag = TRUE;
 	} else {
+#ifdef HELLFIRE
+		micaster = TARGET_BOTH;
+#else
+		micaster = TARGET_MONSTERS;
+#endif
+		dp = dPiece[missile[i]._miVar1][missile[i]._miVar2];
+		assert(dp <= MAXTILES && dp >= 0);
 		tx = missile[i]._miVar1 + XDirAdd[missile[i]._miVar3];
 		ty = missile[i]._miVar2 + YDirAdd[missile[i]._miVar3];
-		if (!nMissileTable[dPiece[missile[i]._miVar1][missile[i]._miVar2]] && missile[i]._miVar8 == 0 && tx > 0 && tx < MAXDUNX && ty > 0 && ty < MAXDUNY) {
-			AddMissile(missile[i]._miVar1, missile[i]._miVar2, missile[i]._miVar1, missile[i]._miVar2, plr[id]._pdir, MIS_FIREWALL, TARGET_MONSTERS, id, 0, missile[i]._mispllvl);
+		if (!nMissileTable[dp] && missile[i]._miVar8 == 0 && tx > 0 && tx < MAXDUNX && ty > 0 && ty < MAXDUNY) {
+			AddMissile(missile[i]._miVar1, missile[i]._miVar2, missile[i]._miVar1, missile[i]._miVar2, plr[id]._pdir, MIS_FIREWALL, micaster, id, 0, missile[i]._mispllvl);
 			missile[i]._miVar1 = tx;
 			missile[i]._miVar2 = ty;
 		} else {
 			missile[i]._miVar8 = 1;
 		}
+		dp = dPiece[missile[i]._miVar5][missile[i]._miVar6];
+		assert(dp <= MAXTILES && dp >= 0);
 		tx = missile[i]._miVar5 + XDirAdd[missile[i]._miVar4];
 		ty = missile[i]._miVar6 + YDirAdd[missile[i]._miVar4];
-		if (!nMissileTable[dPiece[missile[i]._miVar5][missile[i]._miVar6]] && missile[i]._miVar7 == 0 && tx > 0 && tx < MAXDUNX && ty > 0 && ty < MAXDUNY) {
-			AddMissile(missile[i]._miVar5, missile[i]._miVar6, missile[i]._miVar5, missile[i]._miVar6, plr[id]._pdir, MIS_FIREWALL, TARGET_MONSTERS, id, 0, missile[i]._mispllvl);
+		if (!nMissileTable[dp] && missile[i]._miVar7 == 0 && tx > 0 && tx < MAXDUNX && ty > 0 && ty < MAXDUNY) {
+			AddMissile(missile[i]._miVar5, missile[i]._miVar6, missile[i]._miVar5, missile[i]._miVar6, plr[id]._pdir, MIS_FIREWALL, micaster, id, 0, missile[i]._mispllvl);
 			missile[i]._miVar5 = tx;
 			missile[i]._miVar6 = ty;
 		} else {
@@ -5345,7 +5539,7 @@ void MI_Blodboil(int i)
 #ifndef SPAWN
 				PS_ROGUE72,
 				PS_MAGE72,
-				PS_MAGE72, // BUGFIX: should be PS_MONK72?
+				PS_MAGE72,
 				PS_ROGUE72,
 #else
 				0,
@@ -5375,7 +5569,7 @@ void MI_Blodboil(int i)
 #ifndef SPAWN
 				PS_ROGUE72,
 				PS_MAGE72,
-				PS_MAGE72, // BUGFIX: should be PS_MONK72?
+				PS_MAGE72,
 				PS_ROGUE72,
 #else
 				0,

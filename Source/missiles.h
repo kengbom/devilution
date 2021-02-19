@@ -16,7 +16,12 @@ void GetDamageAmt(int i, int *mind, int *maxd);
 int GetSpellLevel(int id, int sn);
 void DeleteMissile(int mi, int i);
 BOOL MonsterTrapHit(int m, int mindam, int maxdam, int dist, int t, BOOLEAN shift);
-BOOL PlayerMHit(int pnum, int m, int dist, int mind, int maxd, int mtype, BOOLEAN shift, int earflag);
+BOOL PlayerMHit(int pnum, int m, int dist, int mind, int maxd, int mtype, BOOLEAN shift, int earflag
+#ifdef HELLFIRE
+    ,
+    BOOLEAN *blocked
+#endif
+);
 void SetMissAnim(int mi, int animtype);
 void SetMissDir(int mi, int dir);
 void LoadMissileGFX(BYTE mi);
@@ -33,7 +38,7 @@ void missiles_immolation_rune(int mi, int sx, int sy, int dx, int dy, int midir,
 void missiles_stone_rune(int mi, int sx, int sy, int dx, int dy, int midir, char mienemy, int id, int dam);
 void missiles_reflection(int mi, int sx, int sy, int dx, int dy, int midir, char mienemy, int id, int dam);
 void missiles_berserk(int mi, int sx, int sy, int dx, int dy, int midir, char mienemy, int id, int dam);
-void missiles_430624(int mi, int sx, int sy, int dx, int dy, int midir, char mienemy, int id, int dam);
+void missiles_hork_spawn(int mi, int sx, int sy, int dx, int dy, int midir, char mienemy, int id, int dam);
 void missiles_jester(int mi, int sx, int sy, int dx, int dy, int midir, char mienemy, int id, int dam);
 void missiles_steal_pots(int mi, int sx, int sy, int dx, int dy, int midir, char mienemy, int id, int dam);
 void missiles_mana_trap(int mi, int sx, int sy, int dx, int dy, int midir, char mienemy, int id, int dam);
@@ -126,7 +131,7 @@ void MI_Acidpud(int i);
 void MI_Firewall(int i);
 void MI_Fireball(int i);
 #ifdef HELLFIRE
-void missiles_4359A0(int i);
+void mi_hork_spawn(int i);
 void MI_Rune(int i);
 void mi_light_wall(int i);
 void mi_hive_explode(int i);

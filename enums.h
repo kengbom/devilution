@@ -2994,7 +2994,7 @@ typedef enum item_misc_id {
 	IMISC_RING      = 0x19,
 	IMISC_AMULET    = 0x1A,
 	IMISC_UNIQUE    = 0x1B,
-	IMISC_MEAT      = 0x1C, /* from demo/PSX */
+	IMISC_FOOD      = 0x1C, /* from demo/PSX */
 	IMISC_OILFIRST  = 0x1D,
 	IMISC_OILOF     = 0x1E, /* oils are beta or hellfire only */
 	IMISC_OILACC    = 0x1F,
@@ -3040,7 +3040,7 @@ typedef enum item_type {
 	ITYPE_GOLD   = 0xB,
 	ITYPE_RING   = 0xC,
 	ITYPE_AMULET = 0xD,
-	ITYPE_MEAT   = 0xE, /* used in demo, might be generic for 'food' */
+	ITYPE_FOOD   = 0xE, /* used in demo */
 	ITYPE_NONE   = -1,
 } item_type;
 
@@ -3378,6 +3378,16 @@ typedef enum item_special_effect {
 	ISPL_3XDAMVDEM      = 0x40000000,
 	ISPL_ALLRESZERO     = 0x80000000,
 } item_special_effect;
+
+typedef enum item_special_effect_hf {
+    ISPLHF_DEVASTATION  = 0x01,
+    ISPLHF_DECAY        = 0x02,
+    ISPLHF_PERIL        = 0x04,
+    ISPLHF_JESTERS      = 0x08,
+    ISPLHF_DOPPELGANGER = 0x10,
+    ISPLHF_ACDEMON      = 0x20,
+    ISPLHF_ACUNDEAD     = 0x40,
+} item_special_effect_hf;
 
 // Logical equipment locations
 typedef enum inv_body_loc {

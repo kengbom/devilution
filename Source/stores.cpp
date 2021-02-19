@@ -21,11 +21,7 @@ int stextsmax;
 int InStoreFlag; /** current frame # for the pentagram selector */
 ItemStruct storehold[48];
 int gossipstart;
-#ifdef HELLFIRE
-ItemStruct witchitem[25];
-#else
-ItemStruct witchitem[20];
-#endif
+ItemStruct witchitem[WITCH_ITEMS];
 BOOL stextscrl;
 int numpremium;
 ItemStruct healitem[20];
@@ -98,7 +94,7 @@ void InitStores()
 	numpremium = 0;
 	premiumlevel = 1;
 
-	for (i = 0; i < 6; i++)
+	for (i = 0; i < SMITH_PREMIUM_ITEMS; i++)
 		premiumitem[i]._itype = ITYPE_NONE;
 
 	boyitem._itype = ITYPE_NONE;
@@ -156,19 +152,19 @@ void DrawSTextBack()
 
 void PrintSString(int x, int y, BOOL cjustflag, const char *str, char col, int val)
 {
-	int xx, yy;
 	int len, width, off, i, k, s;
+	int xx, yy;
 	BYTE c;
 	char valstr[32];
 
 	s = SStringY[y] + stext[y]._syoff;
-	if (stextsize)
+	if (stextsize != 0)
 		xx = PANEL_X + 32;
 	else
 		xx = PANEL_X + 352;
 	off = xx + x + PitchTbl[s + 44 + SCREEN_Y];
 	len = strlen(str);
-	if (stextsize)
+	if (stextsize != 0)
 		yy = 577;
 	else
 		yy = 257;
@@ -187,7 +183,7 @@ void PrintSString(int x, int y, BOOL cjustflag, const char *str, char col, int v
 	for (i = 0; i < len; i++) {
 		c = fontframe[gbFontTransTbl[(BYTE)str[i]]];
 		k += fontkern[c] + 1;
-		if (c && k <= yy) {
+		if (c != 0 && k <= yy) {
 			PrintChar(off, c, col);
 		}
 		off += fontkern[c] + 1;
@@ -195,10 +191,11 @@ void PrintSString(int x, int y, BOOL cjustflag, const char *str, char col, int v
 	if (!cjustflag && val >= 0) {
 		sprintf(valstr, "%i", val);
 		off = PitchTbl[s + 44 + SCREEN_Y] + PANEL_X + 592 - x;
-		for (i = strlen(valstr) - 1; i >= 0; i--) {
+		len = strlen(valstr);
+		for (i = len - 1; i >= 0; i--) {
 			c = fontframe[gbFontTransTbl[(BYTE)valstr[i]]];
 			off -= fontkern[c] + 1;
-			if (c) {
+			if (c != 0) {
 				PrintChar(off, c, col);
 			}
 		}
@@ -591,7 +588,7 @@ BOOL S_StartSPBuy()
 	int i;
 
 	storenumh = 0;
-	for (i = 0; i < 6; i++) {
+	for (i = 0; i < SMITH_PREMIUM_ITEMS; i++) {
 		if (premiumitem[i]._itype != ITYPE_NONE)
 			storenumh++;
 	}
@@ -642,7 +639,7 @@ BOOL SmithSellOk(int i)
 		return FALSE;
 	if (pI->_itype == ITYPE_GOLD)
 		return FALSE;
-	if (pI->_itype == ITYPE_MEAT)
+	if (pI->_itype == ITYPE_FOOD)
 		return FALSE;
 	if (pI->_itype == ITYPE_STAFF && pI->_iSpell != SPL_NULL)
 		return FALSE;
@@ -657,7 +654,7 @@ BOOL SmithSellOk(int i)
 		return FALSE;
 	if (plr[myplr].InvList[i]._itype == ITYPE_GOLD)
 		return FALSE;
-	if (plr[myplr].InvList[i]._itype == ITYPE_MEAT)
+	if (plr[myplr].InvList[i]._itype == ITYPE_FOOD)
 		return FALSE;
 	if (plr[myplr].InvList[i]._itype == ITYPE_STAFF)
 		return FALSE;
@@ -790,7 +787,7 @@ BOOL SmithRepairOk(int i)
 		return FALSE;
 	if (plr[myplr].InvList[i]._itype == ITYPE_GOLD)
 		return FALSE;
-	if (plr[myplr].InvList[i]._itype == ITYPE_MEAT)
+	if (plr[myplr].InvList[i]._itype == ITYPE_FOOD)
 		return FALSE;
 	if (plr[myplr].InvList[i]._iDurability == plr[myplr].InvList[i]._iMaxDur)
 		return FALSE;
@@ -971,7 +968,15 @@ BOOL WitchSellOk(int i)
 
 	if (pI->_itype == ITYPE_MISC)
 		rv = TRUE;
+#ifdef HELLFIRE
+	if (pI->_iMiscId > 29 && pI->_iMiscId < 41)
+		rv = FALSE;
+	if (pI->_iClass == ICLASS_QUEST)
+		rv = FALSE;
+	if (pI->_itype == ITYPE_STAFF && pI->_iSpell != SPL_NULL)
+#else
 	if (pI->_itype == ITYPE_STAFF)
+#endif
 		rv = TRUE;
 	if (pI->IDidx >= IDI_FIRSTQUEST && pI->IDidx <= IDI_LASTQUEST)
 		rv = FALSE;
@@ -1063,6 +1068,12 @@ BOOL WitchRechargeOk(int i)
 	    && plr[myplr].InvList[i]._iCharges != plr[myplr].InvList[i]._iMaxCharges) {
 		rv = TRUE;
 	}
+#ifdef HELLFIRE
+	if ((plr[myplr].InvList[i]._iMiscId == IMISC_UNIQUE || plr[myplr].InvList[i]._iMiscId == IMISC_STAFF)
+	    && plr[myplr].InvList[i]._iCharges < plr[myplr].InvList[i]._iMaxCharges) {
+		rv = TRUE;
+	}
+#endif
 	return rv;
 }
 

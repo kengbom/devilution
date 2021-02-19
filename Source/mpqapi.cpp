@@ -15,6 +15,10 @@ _BLOCKENTRY *sgpBlockTbl;
 /** Is the savegame-file currently open. */
 BOOLEAN save_archive_open;
 
+#define INDEX_ENTRIES 2048
+#define BLOCK_TABLE_SIZE (INDEX_ENTRIES * sizeof(_BLOCKENTRY))
+#define HASH_TABLE_SIZE (INDEX_ENTRIES * sizeof(_HASHENTRY))
+
 //note: 32872 = 32768 + 104 (sizeof(_FILEHEADER))
 
 /* data */
@@ -157,24 +161,26 @@ void mpqapi_store_creation_time(const char *pszArchive, DWORD dwChar)
 
 static _BLOCKENTRY *mpqapi_new_block(int *block_index)
 {
-	_BLOCKENTRY *blockEntry;
-	DWORD i;
+	_BLOCKENTRY *blockEntry = sgpBlockTbl;
 
-	blockEntry = sgpBlockTbl;
+	for (DWORD i = 0; i < INDEX_ENTRIES; i++, blockEntry++) {
+		if (blockEntry->offset != 0)
+			continue;
+		if (blockEntry->sizealloc != 0)
+			continue;
+		if (blockEntry->flags != 0)
+			continue;
+		if (blockEntry->sizefile != 0)
+			continue;
 
-	i = 0;
-	while (blockEntry->offset || blockEntry->sizealloc || blockEntry->flags || blockEntry->sizefile) {
-		i++;
-		blockEntry++;
-		if (i >= 2048) {
-			app_fatal("Out of free block entries");
-			return NULL;
-		}
+		if (block_index)
+			*block_index = i;
+
+		return blockEntry;
 	}
-	if (block_index)
-		*block_index = i;
 
-	return blockEntry;
+	app_fatal("Out of free block entries");
+	return NULL;
 }
 
 static void mpqapi_alloc_block(int block_offset, int block_size)
@@ -183,7 +189,7 @@ static void mpqapi_alloc_block(int block_offset, int block_size)
 	int i;
 
 	block = sgpBlockTbl;
-	i = 2048;
+	i = INDEX_ENTRIES;
 	while (i-- != 0) {
 		if (block->offset && !block->flags && !block->sizefile) {
 			if (block->offset + block->sizealloc == block_offset) {
@@ -218,45 +224,54 @@ static void mpqapi_alloc_block(int block_offset, int block_size)
 
 static int mpqapi_find_free_block(int size, int *block_size)
 {
-	_BLOCKENTRY *pBlockTbl;
-	int i, result;
+	int result;
 
-	pBlockTbl = sgpBlockTbl;
-	i = 2048;
-	while (1) {
-		i--;
-		if (pBlockTbl->offset && !pBlockTbl->flags && !pBlockTbl->sizefile && (DWORD)pBlockTbl->sizealloc >= size)
-			break;
-		pBlockTbl++;
-		if (!i) {
-			*block_size = size;
-			result = sgdwMpqOffset;
-			sgdwMpqOffset += size;
-			return result;
-		}
+	_BLOCKENTRY *pBlockTbl = sgpBlockTbl;
+	for (int i = INDEX_ENTRIES; i--; pBlockTbl++) {
+		if (pBlockTbl->offset == 0)
+			continue;
+		if (pBlockTbl->flags != 0)
+			continue;
+		if (pBlockTbl->sizefile != 0)
+			continue;
+		if ((DWORD)pBlockTbl->sizealloc < size)
+			continue;
+
+		result = pBlockTbl->offset;
+		*block_size = size;
+		pBlockTbl->offset += size;
+		pBlockTbl->sizealloc -= size;
+
+		if (pBlockTbl->sizealloc == 0)
+			memset(pBlockTbl, 0, sizeof(*pBlockTbl));
+
+		return result;
 	}
 
-	result = pBlockTbl->offset;
 	*block_size = size;
-	pBlockTbl->offset += size;
-	pBlockTbl->sizealloc -= size;
-
-	if (!pBlockTbl->sizealloc)
-		memset(pBlockTbl, 0, sizeof(*pBlockTbl));
-
+	result = sgdwMpqOffset;
+	sgdwMpqOffset += size;
 	return result;
 }
 
-static int mpqapi_get_hash_index(short index, int hash_a, int hash_b, int locale)
+static int mpqapi_get_hash_index(int index, int hash_a, int hash_b, int locale)
 {
-	int idx, i;
+	DWORD idx, i;
 
-	i = 2048;
+	i = INDEX_ENTRIES;
 	for (idx = index & 0x7FF; sgpHashTbl[idx].block != -1; idx = (idx + 1) & 0x7FF) {
-		if (!i--)
+		if (i-- == 0)
 			break;
-		if (sgpHashTbl[idx].hashcheck[0] == hash_a && sgpHashTbl[idx].hashcheck[1] == hash_b && sgpHashTbl[idx].lcid == locale && sgpHashTbl[idx].block != -2)
-			return idx;
+		if (sgpHashTbl[idx].hashcheck[0] != hash_a)
+			continue;
+		if (sgpHashTbl[idx].hashcheck[1] != hash_b)
+			continue;
+		if (sgpHashTbl[idx].lcid != locale)
+			continue;
+		if (sgpHashTbl[idx].block == -2)
+			continue;
+
+		return idx;
 	}
 
 	return -1;
@@ -275,8 +290,8 @@ static BOOL WriteMPQHeader()
 	fhdr.sectorsizeid = 3;
 	fhdr.hashoffset = 32872;
 	fhdr.blockoffset = 104;
-	fhdr.hashcount = 2048;
-	fhdr.blockcount = 2048;
+	fhdr.hashcount = INDEX_ENTRIES;
+	fhdr.blockcount = INDEX_ENTRIES;
 
 	if (SetFilePointer(sghArchive, 0, NULL, FILE_BEGIN) == -1)
 		return FALSE;
@@ -294,10 +309,10 @@ static BOOL mpqapi_write_block_table()
 	if (SetFilePointer(sghArchive, 104, NULL, FILE_BEGIN) == -1)
 		return FALSE;
 
-	Encrypt((DWORD *)sgpBlockTbl, 0x8000, Hash("(block table)", 3));
-	success = WriteFile(sghArchive, sgpBlockTbl, 0x8000, &NumberOfBytesWritten, 0);
-	Decrypt((DWORD *)sgpBlockTbl, 0x8000, Hash("(block table)", 3));
-	return success && NumberOfBytesWritten == 0x8000;
+	Encrypt((DWORD *)sgpBlockTbl, BLOCK_TABLE_SIZE, Hash("(block table)", 3));
+	success = WriteFile(sghArchive, sgpBlockTbl, BLOCK_TABLE_SIZE, &NumberOfBytesWritten, 0);
+	Decrypt((DWORD *)sgpBlockTbl, BLOCK_TABLE_SIZE, Hash("(block table)", 3));
+	return success && NumberOfBytesWritten == BLOCK_TABLE_SIZE;
 }
 
 static BOOL mpqapi_write_hash_table()
@@ -308,10 +323,10 @@ static BOOL mpqapi_write_hash_table()
 	if (SetFilePointer(sghArchive, 32872, NULL, FILE_BEGIN) == -1)
 		return FALSE;
 
-	Encrypt((DWORD *)sgpHashTbl, 0x8000, Hash("(hash table)", 3));
-	success = WriteFile(sghArchive, sgpHashTbl, 0x8000, &NumberOfBytesWritten, 0);
-	Decrypt((DWORD *)sgpHashTbl, 0x8000, Hash("(hash table)", 3));
-	return success && NumberOfBytesWritten == 0x8000;
+	Encrypt((DWORD *)sgpHashTbl, HASH_TABLE_SIZE, Hash("(hash table)", 3));
+	success = WriteFile(sghArchive, sgpHashTbl, HASH_TABLE_SIZE, &NumberOfBytesWritten, 0);
+	Decrypt((DWORD *)sgpHashTbl, HASH_TABLE_SIZE, Hash("(hash table)", 3));
+	return success && NumberOfBytesWritten == HASH_TABLE_SIZE;
 }
 
 static BOOL mpqapi_can_seek()
@@ -340,8 +355,8 @@ static BOOL ParseMPQHeader(_FILEHEADER *pHdr, DWORD *pdwNextFileStart)
 	    || pHdr->filesize != size
 	    || pHdr->hashoffset != 32872
 	    || pHdr->blockoffset != 104
-	    || pHdr->hashcount != 2048
-	    || pHdr->blockcount != 2048) {
+	    || pHdr->hashcount != INDEX_ENTRIES
+	    || pHdr->blockcount != INDEX_ENTRIES) {
 
 		if (SetFilePointer(sghArchive, 0, NULL, FILE_BEGIN) == -1)
 			return FALSE;
@@ -407,7 +422,7 @@ static _BLOCKENTRY *mpqapi_add_file(const char *pszName, _BLOCKENTRY *pBlk, int 
 	if (mpqapi_get_hash_index(h1, h2, h3, 0) != -1)
 		app_fatal("Hash collision between \"%s\" and existing file\n", pszName);
 	hIdx = h1 & 0x7FF;
-	i = 2048;
+	i = INDEX_ENTRIES;
 	while (i--) {
 		if (sgpHashTbl[hIdx].block == -1 || sgpHashTbl[hIdx].block == -2)
 			break;
@@ -430,19 +445,16 @@ static BOOL mpqapi_write_file_contents(const char *pszName, const BYTE *pbData, 
 {
 	DWORD *sectoroffsettable;
 	DWORD destsize, num_bytes, block_size, nNumberOfBytesToWrite;
-	const BYTE *src;
-	const char *tmp, *str_ptr;
+	const char *tmp;
 	int i, j;
 
-	str_ptr = pszName;
-	src = pbData;
-	while ((tmp = strchr(str_ptr, ':'))) {
-		str_ptr = tmp + 1;
+	while ((tmp = strchr(pszName, ':'))) {
+		pszName = tmp + 1;
 	}
-	while ((tmp = strchr(str_ptr, '\\'))) {
-		str_ptr = tmp + 1;
+	while ((tmp = strchr(pszName, '\\'))) {
+		pszName = tmp + 1;
 	}
-	Hash(str_ptr, 3);
+	Hash(pszName, 3);
 	num_bytes = (dwLen + 4095) >> 12;
 	nNumberOfBytesToWrite = 4 * num_bytes + 4;
 	pBlk->offset = mpqapi_find_free_block(dwLen + nNumberOfBytesToWrite, &pBlk->sizealloc);
@@ -460,8 +472,8 @@ static BOOL mpqapi_write_file_contents(const char *pszName, const BYTE *pbData, 
 		len = dwLen;
 		if (dwLen >= 4096)
 			len = 4096;
-		memcpy(mpq_buf, src, len);
-		src += len;
+		memcpy(mpq_buf, pbData, len);
+		pbData += len;
 		len = PkwareCompress(mpq_buf, len);
 		if (j == 0) {
 			nNumberOfBytesToWrite = 4 * num_bytes + 4;
@@ -594,25 +606,25 @@ BOOL OpenMPQ(const char *pszArchive, BOOL hidden, DWORD dwChar)
 		if (ParseMPQHeader(&fhdr, &sgdwMpqOffset) == FALSE) {
 			goto on_error;
 		}
-		sgpBlockTbl = (_BLOCKENTRY *)DiabloAllocPtr(0x8000);
-		memset(sgpBlockTbl, 0, 0x8000);
+		sgpBlockTbl = (_BLOCKENTRY *)DiabloAllocPtr(BLOCK_TABLE_SIZE);
+		memset(sgpBlockTbl, 0, BLOCK_TABLE_SIZE);
 		if (fhdr.blockcount) {
 			if (SetFilePointer(sghArchive, 104, NULL, FILE_BEGIN) == -1)
 				goto on_error;
-			if (!ReadFile(sghArchive, sgpBlockTbl, 0x8000, &dwTemp, NULL))
+			if (!ReadFile(sghArchive, sgpBlockTbl, BLOCK_TABLE_SIZE, &dwTemp, NULL))
 				goto on_error;
 			key = Hash("(block table)", 3);
-			Decrypt((DWORD *)sgpBlockTbl, 0x8000, key);
+			Decrypt((DWORD *)sgpBlockTbl, BLOCK_TABLE_SIZE, key);
 		}
-		sgpHashTbl = (_HASHENTRY *)DiabloAllocPtr(0x8000);
-		memset(sgpHashTbl, 255, 0x8000);
+		sgpHashTbl = (_HASHENTRY *)DiabloAllocPtr(HASH_TABLE_SIZE);
+		memset(sgpHashTbl, 255, HASH_TABLE_SIZE);
 		if (fhdr.hashcount) {
 			if (SetFilePointer(sghArchive, 32872, NULL, FILE_BEGIN) == -1)
 				goto on_error;
-			if (!ReadFile(sghArchive, sgpHashTbl, 0x8000, &dwTemp, NULL))
+			if (!ReadFile(sghArchive, sgpHashTbl, HASH_TABLE_SIZE, &dwTemp, NULL))
 				goto on_error;
 			key = Hash("(hash table)", 3);
-			Decrypt((DWORD *)sgpHashTbl, 0x8000, key);
+			Decrypt((DWORD *)sgpHashTbl, HASH_TABLE_SIZE, key);
 		}
 		return TRUE;
 	}
