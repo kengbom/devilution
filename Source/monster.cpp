@@ -34,6 +34,43 @@ const BYTE counsmiss[4] = { MIS_FIREBOLT, MIS_CBOLT, MIS_LIGHTCTRL, MIS_FIREBALL
 
 /* data */
 
+// BUGFIX: MWVel velocity values are not rounded consistently. The correct
+// formula for monster walk velocity is calculated as follows (for 16, 32 and 64
+// pixel distances, respectively):
+//
+//    vel16 = (16 << monsterWalkShift) / nframes
+//    vel32 = (32 << monsterWalkShift) / nframes
+//    vel64 = (64 << monsterWalkShift) / nframes
+//
+// The correct monster walk velocity table is as follows:
+//
+//   int MWVel[24][3] = {
+//      { 256, 512, 1024 },
+//      { 128, 256, 512 },
+//      { 85, 171, 341 },
+//      { 64, 128, 256 },
+//      { 51, 102, 205 },
+//      { 43, 85, 171 },
+//      { 37, 73, 146 },
+//      { 32, 64, 128 },
+//      { 28, 57, 114 },
+//      { 26, 51, 102 },
+//      { 23, 47, 93 },
+//      { 21, 43, 85 },
+//      { 20, 39, 79 },
+//      { 18, 37, 73 },
+//      { 17, 34, 68 },
+//      { 16, 32, 64 },
+//      { 15, 30, 60 },
+//      { 14, 28, 57 },
+//      { 13, 27, 54 },
+//      { 13, 26, 51 },
+//      { 12, 24, 49 },
+//      { 12, 23, 47 },
+//      { 11, 22, 45 },
+//      { 11, 21, 43 }
+//   };
+
 /** Maps from monster walk animation frame num to monster velocity. */
 int MWVel[24][3] = {
 	{ 256, 512, 1024 },
@@ -1853,8 +1890,8 @@ void M_DiabloDeath(int i, BOOL sendmsg)
 		monster[k]._mVar1 = 0;
 		monster[k]._mx = monster[k]._moldx;
 		monster[k]._my = monster[k]._moldy;
-		monster[k]._mfuty = monster[k]._mx;
-		monster[k]._mfutx = monster[k]._my;
+		monster[k]._mfutx = monster[k]._mx;
+		monster[k]._mfuty = monster[k]._my;
 		monster[k]._moldx = monster[k]._mx; // CODEFIX: useless assignment
 		monster[k]._moldy = monster[k]._my; // CODEFIX: useless assignment
 		M_CheckEFlag(k);
@@ -1932,7 +1969,7 @@ void M2MStartHit(int mid, int i, int dam)
 #endif
 	}
 
-	if (i >= 0) // BUGFIX: Missing check for golems `&& i <= MAX_PLRS`
+	if (i >= 0) // BUGFIX: Missing check for golems `&& i < MAX_PLRS`
 		monster[i].mWhoHit |= 1 << i; // BUGFIX Should be monster[mid].mWhoHit
 
 	delta_monster_hp(mid, monster[mid]._mhitpoints, currlevel);
@@ -2083,9 +2120,12 @@ void M2MStartKill(int i, int mid)
 	delta_kill_monster(mid, monster[mid]._mx, monster[mid]._my, currlevel);
 	NetSendCmdLocParam1(FALSE, CMD_MONSTDEATH, monster[mid]._mx, monster[mid]._my, mid);
 
+	// BUGFIX: missing check for attacking golems `if (0 <= i && i < MAX_PLRS)`.
 	monster[mid].mWhoHit |= 1 << i;
-	if (i < MAX_PLRS)
+	if (i < MAX_PLRS) {
+		// BUGFIX: missing check for target golems `if (mid >= MAX_PLRS)`.
 		AddPlrMonstExper(monster[mid].mLevel, monster[mid].mExp, monster[mid].mWhoHit);
+	}
 
 	monstkills[monster[mid].MType->mtype]++;
 	monster[mid]._mhitpoints = 0;
@@ -5993,6 +6033,7 @@ void M_FallenFear(int x, int y)
 		    && monster[mi]._mhitpoints >> 6 > 0) {
 			monster[mi]._mgoal = MGOAL_RETREAT;
 			monster[mi]._mgoalvar1 = rundist;
+			// BUGFIX: should be `monster[mi]`, was `monster[i]`.
 			monster[mi]._mdir = GetDirection(x, y, monster[i]._mx, monster[i]._my);
 		}
 	}
